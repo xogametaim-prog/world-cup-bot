@@ -41,6 +41,7 @@ try:
     WORK_MAX = 200
     DAY_SECONDS = 86400
     HOUR_SECONDS = 3600
+    MAX_TEAM_NAME = 20
     DEFAULT_PUNCH_DAMAGE = 5
 
     WEAPON_DAMAGE = {2: 20, 7: 40, 9: 15, 12: 25, 16: 35, 23: 30}
@@ -186,10 +187,11 @@ try:
                 best = max(best, WEAPON_DAMAGE[item_id])
         return best
 
-    # ========== إعداد البوت ==========
+    # ========== إعداد البوت (مع INTENTS الصحيحة) ==========
     intents = discord.Intents.default()
-    intents.message_content = True
+    intents.message_content = True   # ضروري جداً
     intents.members = True
+
     bot = commands.Bot(command_prefix="!", intents=intents)
 
     # ========== الأوامر ==========
@@ -254,7 +256,7 @@ try:
     @bot.tree.command(name="المتجر", description="عرض المتجر")
     async def shop(interaction: discord.Interaction):
         items = await get_all_shop()
-        embed = discord.Embed(title="🛒 المتجر", color=0x3498db)
+        embed = discord.Embed(title="🛒 المتجر", description="اشتري بـ `/اشتري [الرقم] [عملات/رصيد] [الكمية]`\nالرصيد المميز يعطي ضعف الكمية", color=0x3498db)
         for item in items[:12]:
             embed.add_field(name=f"{item['id']}. {item['name']}", value=f"🪙 {item['coinPrice']} | 💎 {item['creditPrice']}\n{item['desc']}", inline=True)
         await interaction.response.send_message(embed=embed)
@@ -315,8 +317,8 @@ try:
         app_commands.Choice(name="الفريق الثاني", value=2)
     ])
     async def set_team(interaction: discord.Interaction, slot: int, name: str):
-        if len(name) > 20:
-            name = name[:20]
+        if len(name) > MAX_TEAM_NAME:
+            name = name[:MAX_TEAM_NAME]
         uid = str(interaction.user.id)
         await set_team(uid, slot-1, name)
         await interaction.response.send_message(f"✅ تم تسمية الفريق {slot} → {name}")
@@ -376,20 +378,36 @@ try:
             embed.add_field(name="💀 النتيجة", value="تم هزيمة الفريق!", inline=False)
         await interaction.response.send_message(embed=embed)
 
-    # ========== تشغيل البوت ==========
+    @bot.tree.command(name="help", description="عرض جميع الأوامر")
+    async def help_cmd(interaction: discord.Interaction):
+        embed = discord.Embed(title="🤖 قائمة الأوامر", color=0x5865F2)
+        embed.add_field(name="💰 الاقتصاد", value="`/رصيدي`, `/يومي`, `/ساعي`, `/اعمل`, `/الاغنياء`", inline=False)
+        embed.add_field(name="🛒 المتجر", value="`/المتجر`, `/اشتري`, `/مخزني`", inline=False)
+        embed.add_field(name="👥 الفرق", value="`/تعيين_فريق`, `/تفعيل_فريق`, `/فرقي`", inline=False)
+        embed.add_field(name="⚔️ القتال", value="`/هجوم @لاعب`", inline=False)
+        await interaction.response.send_message(embed=embed)
+
+    # ========== تشغيل البوت مع مزامنة محسنة ==========
     @bot.event
     async def on_ready():
         print(f"✅ Bot online: {bot.user}")
-        await bot.tree.sync()
-        print("✅ Commands synced")
+        print(f"📡 Bot ID: {bot.user.id}")
+        print(f"📊 Connected to {len(bot.guilds)} servers")
+        
+        # مزامنة الأوامر مع طباعة العدد
+        print("🔄 Syncing slash commands...")
+        try:
+            synced = await bot.tree.sync()
+            print(f"✅ Synced {len(synced)} commands successfully!")
+            print("📋 Command list:")
+            for cmd in synced:
+                print(f"   • /{cmd.name} - {cmd.description}")
+        except Exception as e:
+            print(f"❌ Failed to sync commands: {e}")
+        
+        print("🎉 Bot is ready to use!")
 
     async def main():
+        print("🚀 Initializing database...")
         await init_db()
-        threading.Thread(target=run_flask, daemon=True).start()
-        await bot.start(TOKEN)
-
-    asyncio.run(main())
-
-except Exception as e:
-    print(f"❌ Fatal error: {e}")
-    traceback.print_exc()
+        print("✅ Database ready")
