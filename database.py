@@ -1,19 +1,15 @@
 import sqlite3
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
 from config import عملات_البداية, رصيد_البداية
 
-# تنفيذ العمليات المتزامنة في مؤشر ترابط منفصل لعدم حظر الحلقة الرئيسية
-executor = ThreadPoolExecutor(max_workers=1)
+مسار_قاعدة_البيانات = "game_data.db"
 
-async def run_sync(func, *args, **kwargs):
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(executor, lambda: func(*args, **kwargs))
+async def تنفيذ_متزامن(func, *args, **kwargs):
+    return await asyncio.to_thread(func, *args, **kwargs)
 
-# ========== تهيئة قاعدة البيانات ==========
 async def تهيئة_قاعدة_البيانات():
     def _init():
-        conn = sqlite3.connect("game_data.db")
+        conn = sqlite3.connect(مسار_قاعدة_البيانات)
         c = conn.cursor()
         # جدول المستخدمين
         c.execute('''CREATE TABLE IF NOT EXISTS users (
@@ -46,7 +42,7 @@ async def تهيئة_قاعدة_البيانات():
             credit_price INTEGER,
             description TEXT
         )''')
-        # تعبئة المتجر بـ 25 سلعة إذا كان فارغاً
+        # تعبئة المتجر بـ 25 سلعة
         c.execute("SELECT COUNT(*) FROM shop")
         if c.fetchone()[0] == 0:
             العناصر = [
@@ -76,104 +72,90 @@ async def تهيئة_قاعدة_البيانات():
                 (24, "🌀 تميمة الريح", 550, 22, "يتحكم بالرياح"),
                 (25, "🌟 شظية نجم", 400, 16, "يحقق الأمنيات")
             ]
-            c.executemany("INSERT INTO shop (item_id, name, coin_price, credit_price, description) VALUES (?,?,?,?,?)", العناصر)
+            c.executemany("INSERT INTO shop VALUES (?,?,?,?,?)", العناصر)
         conn.commit()
         conn.close()
-    await run_sync(_init)
+    await تنفيذ_متزامن(_init)
 
-# ========== دوال المستخدمين ==========
 async def احصل_على_مستخدم(user_id):
     def _get():
-        conn = sqlite3.connect("game_data.db")
+        conn = sqlite3.connect(مسار_قاعدة_البيانات)
         c = conn.cursor()
         c.execute("SELECT coins, credits, last_daily, last_hourly, active_team FROM users WHERE user_id = ?", (user_id,))
         row = c.fetchone()
         if row is None:
-            c.execute("INSERT INTO users (user_id, coins, credits, last_daily, last_hourly, active_team) VALUES (?, ?, ?, ?, ?, ?)",
-                      (user_id, عملات_البداية, رصيد_البداية, 0, 0, 0))
-            c.execute("INSERT OR IGNORE INTO teams (user_id, slot, name) VALUES (?, 0, ''), (?, 1, '')", (user_id, user_id))
+            c.execute("INSERT INTO users (user_id, coins, credits) VALUES (?, ?, ?)", (user_id, عملات_البداية, رصيد_البداية))
+            c.execute("INSERT OR IGNORE INTO teams (user_id, slot) VALUES (?,0), (?,1)", (user_id, user_id))
             conn.commit()
-            conn.close()
-            return {"coins": عملات_البداية, "credits": رصيد_البداية, "last_daily": 0, "last_hourly": 0, "active_team": 0}
+            result = {"coins": عملات_البداية, "credits": رصيد_البداية, "last_daily": 0, "last_hourly": 0, "active_team": 0}
         else:
-            conn.close()
-            return {"coins": row[0], "credits": row[1], "last_daily": row[2], "last_hourly": row[3], "active_team": row[4]}
-    return await run_sync(_get)
+            result = {"coins": row[0], "credits": row[1], "last_daily": row[2], "last_hourly": row[3], "active_team": row[4]}
+        conn.close()
+        return result
+    return await تنفيذ_متزامن(_get)
 
-async def تحديث_مستخدم(user_id, coins=None, credits=None, last_daily=None, last_hourly=None, active_team=None):
+async def تحديث_مستخدم(user_id, **kwargs):
     def _update():
-        conn = sqlite3.connect("game_data.db")
+        conn = sqlite3.connect(مسار_قاعدة_البيانات)
         c = conn.cursor()
-        if coins is not None:
-            c.execute("UPDATE users SET coins = ? WHERE user_id = ?", (coins, user_id))
-        if credits is not None:
-            c.execute("UPDATE users SET credits = ? WHERE user_id = ?", (credits, user_id))
-        if last_daily is not None:
-            c.execute("UPDATE users SET last_daily = ? WHERE user_id = ?", (last_daily, user_id))
-        if last_hourly is not None:
-            c.execute("UPDATE users SET last_hourly = ? WHERE user_id = ?", (last_hourly, user_id))
-        if active_team is not None:
-            c.execute("UPDATE users SET active_team = ? WHERE user_id = ?", (active_team, user_id))
+        for key, val in kwargs.items():
+            c.execute(f"UPDATE users SET {key} = ? WHERE user_id = ?", (val, user_id))
         conn.commit()
         conn.close()
-    await run_sync(_update)
+    await تنفيذ_متزامن(_update)
 
-# ========== دوال الفرق ==========
 async def احصل_على_فريق(user_id, slot):
     def _get():
-        conn = sqlite3.connect("game_data.db")
+        conn = sqlite3.connect(مسار_قاعدة_البيانات)
         c = conn.cursor()
         c.execute("SELECT name FROM teams WHERE user_id = ? AND slot = ?", (user_id, slot))
         row = c.fetchone()
         conn.close()
         return row[0] if row else ""
-    return await run_sync(_get)
+    return await تنفيذ_متزامن(_get)
 
 async def تعيين_فريق(user_id, slot, name):
     def _set():
-        conn = sqlite3.connect("game_data.db")
+        conn = sqlite3.connect(مسار_قاعدة_البيانات)
         c = conn.cursor()
         c.execute("INSERT OR REPLACE INTO teams (user_id, slot, name) VALUES (?, ?, ?)", (user_id, slot, name))
         conn.commit()
         conn.close()
-    await run_sync(_set)
+    await تنفيذ_متزامن(_set)
 
-# ========== دوال المتصدرين ==========
 async def احصل_على_كل_المستخدمين_للترتيب():
     def _get():
-        conn = sqlite3.connect("game_data.db")
+        conn = sqlite3.connect(مسار_قاعدة_البيانات)
         c = conn.cursor()
         c.execute("SELECT user_id, coins FROM users")
         rows = c.fetchall()
         conn.close()
         return rows
-    return await run_sync(_get)
+    return await تنفيذ_متزامن(_get)
 
-# ========== دوال المخزون ==========
-async def أضف_إلى_المخزون(user_id, item_id, quantity):
+async def أضف_إلى_المخزون(user_id, item_id, qty):
     def _add():
-        conn = sqlite3.connect("game_data.db")
+        conn = sqlite3.connect(مسار_قاعدة_البيانات)
         c = conn.cursor()
         c.execute("INSERT INTO inventory (user_id, item_id, quantity) VALUES (?, ?, ?) ON CONFLICT(user_id, item_id) DO UPDATE SET quantity = quantity + ?",
-                  (user_id, item_id, quantity, quantity))
+                  (user_id, item_id, qty, qty))
         conn.commit()
         conn.close()
-    await run_sync(_add)
+    await تنفيذ_متزامن(_add)
 
 async def احصل_على_المخزون(user_id):
     def _get():
-        conn = sqlite3.connect("game_data.db")
+        conn = sqlite3.connect(مسار_قاعدة_البيانات)
         c = conn.cursor()
         c.execute("SELECT item_id, quantity FROM inventory WHERE user_id = ?", (user_id,))
         rows = c.fetchall()
         conn.close()
         return rows
-    return await run_sync(_get)
+    return await تنفيذ_متزامن(_get)
 
-# ========== دوال المتجر ==========
 async def احصل_على_سلعة_من_المتجر(item_id):
     def _get():
-        conn = sqlite3.connect("game_data.db")
+        conn = sqlite3.connect(مسار_قاعدة_البيانات)
         c = conn.cursor()
         c.execute("SELECT item_id, name, coin_price, credit_price, description FROM shop WHERE item_id = ?", (item_id,))
         row = c.fetchone()
@@ -181,14 +163,14 @@ async def احصل_على_سلعة_من_المتجر(item_id):
         if row:
             return {"id": row[0], "name": row[1], "coinPrice": row[2], "creditPrice": row[3], "desc": row[4]}
         return None
-    return await run_sync(_get)
+    return await تنفيذ_متزامن(_get)
 
 async def احصل_على_كل_سلع_المتجر():
     def _get():
-        conn = sqlite3.connect("game_data.db")
+        conn = sqlite3.connect(مسار_قاعدة_البيانات)
         c = conn.cursor()
         c.execute("SELECT item_id, name, coin_price, credit_price, description FROM shop ORDER BY item_id")
         rows = c.fetchall()
         conn.close()
         return [{"id": r[0], "name": r[1], "coinPrice": r[2], "creditPrice": r[3], "desc": r[4]} for r in rows]
-    return await run_sync(_get)
+    return await تنفيذ_متزامن(_get)
