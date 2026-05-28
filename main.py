@@ -55,7 +55,7 @@ if التوكن is None:
 معرف_المطور = "ta_im1@"
 مسار_قاعدة_البيانات = "game_data.db"
 
-# ========== دوال قاعدة البيانات ==========
+# ========== دوال قاعدة البيانات الأساسية ==========
 async def تهيئة_قاعدة_البيانات():
     async with aiosqlite.connect(مسار_قاعدة_البيانات) as قاعدة:
         await قاعدة.execute('''CREATE TABLE IF NOT EXISTS المستخدمين (
@@ -108,12 +108,12 @@ async def تهيئة_قاعدة_البيانات():
         المؤشر = await قاعدة.execute("SELECT COUNT(*) FROM المتجر")
         if (await المؤشر.fetchone())[0] == 0:
             العناصر = [
-                (1, "🍎 تفاحة سحرية", 100, 5, "تستعيد 20 صحة"),
+                (1, "🍎 تفاحة سحرية", 100, 5, "تستعيد 20 صحة فوراً"),
                 (2, "🗡️ سيف حديدي", 250, 10, "+25 ضرر"),
                 (3, "🛡️ درع فولاذي", 200, 8, "+8 دفاع"),
                 (4, "💎 ياقوتة", 500, 20, "حجر كريم"),
-                (5, "🧪 جرعة شفاء", 80, 3, "تشفي 50 صحة"),
-                (6, "📜 درع قديم", 300, 12, "مهارة جديدة"),
+                (5, "🧪 جرعة شفاء", 80, 3, "تشفي 50 صحة فوراً"),
+                (6, "📜 درع قديم", 300, 12, "مقاومة متوسطة"),
                 (7, "🐉 ناب تنين", 1000, 40, "+50 ضرر"),
                 (8, "👑 تاج الملوك", 2000, 80, "سلطة ملكية"),
                 (9, "⚡ حذاء البرق", 400, 15, "+20 ضرر"),
@@ -168,7 +168,7 @@ async def احصل_على_مستخدم(المعرف):
             الصف = await مؤشر.fetchone()
             if الصف is None:
                 await قاعدة.execute("INSERT INTO المستخدمين (user_id, عملات, رصيد) VALUES (?, ?, ?)", (المعرف, عملات_البداية, رصيد_البداية))
-                await قاعدة.execute("INSERT OR IGNORE INTO الفرق (user_id, slot, الصحة) VALUES (?, 0, ?), (?, 1, ?)", (المعرف, صحة_الفريق_البدائية, المعرف, صحة_الفريق_البدائية))
+                await قاعدة.execute("INSERT OR IGNORE INTO الفرق (user_id, slot, الاسم, الصحة) VALUES (?, 0, '', ?), (?, 1, '', ?)", (المعرف, صحة_الفريق_البدائية, المعرف, صحة_الفريق_البدائية))
                 await قاعدة.commit()
                 return {"عملات": عملات_البداية, "رصيد": رصيد_البداية, "اخر_يومي": 0, "اخر_ساعي": 0, "الفريق_النشط": 0, "اخر_سرقة": 0}
             return {"عملات": الصف[0], "رصيد": الصف[1], "اخر_يومي": الصف[2], "اخر_ساعي": الصف[3], "الفريق_النشط": الصف[4], "اخر_سرقة": الصف[5] if len(الصف) > 5 else 0}
@@ -255,7 +255,6 @@ async def احصل_على_الأسلحة_المتاحة(المعرف):
     المخزون = await احصل_على_المخزون(المعرف)
     الأسلحة = []
     
-    # أسلحة المتجر العادي
     أسلحة_العادي = {
         2: ("🗡️ سيف حديدي", 25),
         7: ("🐉 ناب تنين", 50),
@@ -267,6 +266,9 @@ async def احصل_على_الأسلحة_المتاحة(المعرف):
     
     for رقم_السلعة, كمية in المخزون:
         if كمية > 0:
+            # تخطي العناصر العلاجية (التفاحة 1 والجرعة 5)
+            if رقم_السلعة in [1, 5]:
+                continue
             if رقم_السلعة in أسلحة_العادي:
                 الاسم, الضرر = أسلحة_العادي[رقم_السلعة]
                 الأسلحة.append({"id": رقم_السلعة, "name": الاسم, "damage": الضرر})
@@ -298,7 +300,6 @@ async def ارسال_تسجيل(البوت, العنوان, الوصف, اللو
 الصلاحيات.members = True
 
 البوت = commands.Bot(command_prefix="!", intents=الصلاحيات)
-
 # ========== كلاس مخصص للسوق السوداء ==========
 class السوق_السوداء_View(discord.ui.View):
     def __init__(self, الصفحة_الحالية: int = 1):
@@ -306,29 +307,49 @@ class السوق_السوداء_View(discord.ui.View):
         self.الصفحة_الحالية = الصفحة_الحالية
 
     @discord.ui.button(label="◀ السابقة", style=discord.ButtonStyle.secondary)
-    async def السابق_callback(self, التفاعل: discord.Interaction, زر: discord.ui.Button):
+    async def السابق_callback(self, التفاعل: discord.Interaction):
         if self.الصفحة_الحالية > 1:
             self.الصفحة_الحالية -= 1
             العناصر = await احصل_على_سلع_السوق_السوداء(self.الصفحة_الحالية)
             تضمين = discord.Embed(title=f"🔫 السوق السوداء - الصفحة {self.الصفحة_الحالية}/5", color=0xFF0000)
             for عنصر in العناصر:
-                تضمين.add_field(name=f"{عنصر['id']}. {عنصر['name']}", value=f"🪙 {عنصر['coinPrice']} | 💎 {عنصر['creditPrice']}", inline=True)
+                تضمين.add_field(
+                    name=f"{عنصر['id']}. {عنصر['name']}", 
+                    value=f"🪙 {عنصر['coinPrice']} عملة\n💎 {عنصر['creditPrice']} رصيد\n📝 *{عنصر['desc']}*", 
+                    inline=True
+                )
             await التفاعل.response.edit_message(embed=تضمين, view=self)
         else:
-            await التفاعل.response.send_message("أنت في الصفحة الأولى", ephemeral=True)
+            await التفاعل.response.send_message("❌ أنت في الصفحة الأولى بالفعل!", ephemeral=True)
     
     @discord.ui.button(label="التالي ▶", style=discord.ButtonStyle.secondary)
-    async def التالي_callback(self, التفاعل: discord.Interaction, زر: discord.ui.Button):
+    async def التالي_callback(self, التفاعل: discord.Interaction):
         if self.الصفحة_الحالية < 5:
             self.الصفحة_الحالية += 1
             العناصر = await احصل_على_سلع_السوق_السوداء(self.الصفحة_الحالية)
             تضمين = discord.Embed(title=f"🔫 السوق السوداء - الصفحة {self.الصفحة_الحالية}/5", color=0xFF0000)
             for عنصر in العناصر:
-                تضمين.add_field(name=f"{عنصر['id']}. {عنصر['name']}", value=f"🪙 {عنصر['coinPrice']} | 💎 {عنصر['creditPrice']}", inline=True)
+                تضمين.add_field(
+                    name=f"{عنصر['id']}. {عنصر['name']}", 
+                    value=f"🪙 {عنصر['coinPrice']} عملة\n💎 {عنصر['creditPrice']} رصيد\n📝 *{عنصر['desc']}*", 
+                    inline=True
+                )
             await التفاعل.response.edit_message(embed=تضمين, view=self)
         else:
-            await التفاعل.response.send_message("أنت في الصفحة الخامسة", ephemeral=True)
-# ========== الأوامر ==========
+            await التفاعل.response.send_message("❌ أنت في الصفحة الأخيرة (الخامسة) بالفعل!", ephemeral=True)
+
+# ========== أحداث التشغيل والتزامن ==========
+@البوت.event
+async def on_ready():
+    print(f"✅ تم تشغيل البوت بنجاح باسم: {البوت.user}")
+    await تهيئة_قاعدة_البيانات()
+    try:
+        المزامنة = await البوت.tree.sync()
+        print(f"🔄 تم مزامنة {len(المزامنة)} من الأوامر المائلة Slash Commands!")
+    except Exception as e:
+        print(f"❌ فشل مزامنة الأوامر المائلة: {e}")
+```python
+# ========== الأوامر الأساسية ==========
 
 # ----- المساعدة -----
 @البوت.tree.command(name="help", description="عرض جميع الأوامر")
@@ -415,40 +436,6 @@ async def المتجر(التفاعل: discord.Interaction):
         تضمين.add_field(name=f"{عنصر['id']}. {عنصر['name']}", value=f"🪙 {عنصر['coinPrice']} | 💎 {عنصر['creditPrice']}", inline=True)
     await التفاعل.response.send_message(embed=تضمين)
 
-@البوت.tree.command(name="اشتري", description="شراء سلعة")
-@app_commands.choices(العملة=[
-    app_commands.Choice(name="عملات", value="coins"), 
-    app_commands.Choice(name="رصيد مميز", value="credits")
-])
-async def اشتري(التفاعل: discord.Interaction, رقم_السلعة: int, العملة: str, الكمية: int = 1):
-    if الكمية < 1:
-        الكمية = 1
-    السلعة = await احصل_على_سلعة_من_المتجر(رقم_السلعة)
-    if not السلعة:
-        await التفاعل.response.send_message("❌ رقم سلعة خاطئ", ephemeral=True)
-        return
-    المعرف = str(التفاعل.user.id)
-    المستخدم = await احصل_على_مستخدم(المعرف)
-    if العملة == "coins":
-        السعر = السلعة["coinPrice"]
-        المضاعف = 1
-    else:
-        السعر = السلعة["creditPrice"]
-        المضاعف = 2
-    التكلفة = السعر * الكمية
-    if العملة == "coins":
-        if المستخدم["عملات"] < التكلفة:
-            await التفاعل.response.send_message(f"❌ تحتاج {التكلفة} عملة", ephemeral=True)
-            return
-        await تحديث_مستخدم(المعرف, عملات=المستخدم["عملات"] - التكلفة)
-    else:
-        if المستخدم["رصيد"] < التكلفة:
-            await التفاعل.response.send_message(f"❌ تحتاج {التكلفة} رصيد", ephemeral=True)
-            return
-        await تحديث_مستخدم(المعرف, رصيد=المستخدم["رصيد"] - التكلفة)
-    await أضف_إلى_المخزون(المعرف, رقم_السلعة, الكمية * المضاعف)
-    await التفاعل.response.send_message(f"✅ اشتريت {الكمية * المضاعف} × {السلعة['name']}")
-
 @البوت.tree.command(name="مخزني", description="عرض مخزونك")
 async def مخزني(التفاعل: discord.Interaction):
     المعرف = str(التفاعل.user.id)
@@ -491,6 +478,7 @@ async def شراء_بلاك(التفاعل: discord.Interaction, رقم_السل
         السعر = السلعة["coinPrice"]
     else:
         السعر = السلعة["creditPrice"]
+        
     if العملة == "coins":
         if المستخدم["عملات"] < السعر:
             await التفاعل.response.send_message(f"❌ تحتاج {السعر} عملة", ephemeral=True)
@@ -501,6 +489,7 @@ async def شراء_بلاك(التفاعل: discord.Interaction, رقم_السل
             await التفاعل.response.send_message(f"❌ تحتاج {السعر} رصيد", ephemeral=True)
             return
         await تحديث_مستخدم(المعرف, رصيد=المستخدم["رصيد"] - السعر)
+        
     await أضف_إلى_المخزون(المعرف, رقم_السلعة, 1)
     await التفاعل.response.send_message(f"✅ اشتريت {السلعة['name']} من السوق السوداء")
 
@@ -514,7 +503,7 @@ async def تعيين_فريق_امر(التفاعل: discord.Interaction, الر
     if len(الاسم) > الحد_الأقصى_لاسم_الفريق:
         الاسم = الاسم[:الحد_الأقصى_لاسم_الفريق]
     await تعيين_فريق(str(التفاعل.user.id), الرقم-1, الاسم)
-    await التفاعل.response.send_message(f"✅ تم تسمية الفريق {الرقم} → {الاسم}")
+    await التفاعل.response.send_message(f"✅ تم تسمية الفريق {الرقم} ← {الاسم}")
 
 @البوت.tree.command(name="تفعيل_فريق", description="تفعيل فريق")
 @app_commands.choices(الرقم=[
@@ -564,7 +553,7 @@ async def دخول_فريق(التفاعل: discord.Interaction):
     العرض.add_item(القائمة)
     await التفاعل.response.send_message("📋 اختر فريقاً:", view=العرض, ephemeral=True)
 
-# ----- الهجوم المطور (باختيار السلاح) -----
+# ----- الهجوم المطور -----
 class قائمة_اختيار_السلاح(discord.ui.Select):
     def __init__(self, المهاجم_id, الخصم_member, الأسلحة_المتاحة, البوت_instance):
         self.المهاجم_id = المهاجم_id
@@ -715,12 +704,45 @@ async def مهامي(التفاعل: discord.Interaction):
     تضمين.add_field(name="3️⃣ " + الصف[2], value=f"التقدم: {الصف[5]}", inline=False)
     await التفاعل.response.send_message(embed=تضمين)
 
-@البوت.tree.command(name="تسليم_مهمة", description="تسليم مهمة مكتملة")
+@البوت.tree.command(name="تسليم_مهمة", description="تسليم مهمة مكتملة وكسب مكافأة")
 async def تسليم_مهمة(التفاعل: discord.Interaction, رقم_المهمة: int):
     if رقم_المهمة not in [1, 2, 3]:
         await التفاعل.response.send_message("❌ رقم المهمة يجب أن يكون 1 أو 2 أو 3", ephemeral=True)
         return
     
     المعرف = str(التفاعل.user.id)
+    حقل_المهمة = f"مهمة{رقم_المهمة}"
+    حقل_التقدم = f"تقدم{رقم_المهمة}"
+    حقل_مكتمل = f"مكتمل{رقم_المهمة}"
+    
     async with aiosqlite.connect(مسار_قاعدة_البيانات) as قاعدة:
-        # التحقق من حالة ا
+        async with قاعدة.execute(f"SELECT {حقل_المهمة}, {حقل_التقدم}, {حقل_مكتمل} FROM المهام WHERE user_id = ?", (المعرف,)) as مؤشر:
+            الصف = await مؤشر.fetchone()
+            
+    if not الصف:
+        await التفاعل.response.send_message("❌ ليس لديك مهام نشطة حالياً، استخدم `/مهامي` أولاً.", ephemeral=True)
+        return
+        
+    اسم_المهمة, التقدم, مكتمل = الصف
+    
+    if مكتمل == 1:
+        await التفاعل.response.send_message("❌ لقد قمت بتسليم هذه المهمة واستلام جائزتها بالفعل!", ephemeral=True)
+        return
+        
+    الهدف = 5 if "5" in اسم_المهمة else (3 if "3" in اسم_المهمة else 1)
+    
+    if التقدم < الهدف:
+        await التفاعل.response.send_message(f"⏳ لم تكمل المهمة بعد! تقدمك الحالي: ({التقدم}/{الهدف})", ephemeral=True)
+        return
+        
+    جائزة_عملات = 300
+    جائزة_رصيد = 5
+    
+    المستخدم = await احصل_على_مستخدم(المعرف)
+    await تحديث_مستخدم(المعرف, عملات=المستخدم["عملات"] + جائزة_عملات, رصيد=المستخدم["رصيد"] + جائزة_رصيد)
+    
+    async with aiosqlite.connect(مسار_قاعدة_البيانات) as قاعدة:
+        await قاعدة.execute(f"UPDATE المهام SET {حقل_مكتمل} = 1 WHERE user_id = ?", (المعرف,))
+        await قاعدة.commit()
+        
+    await التفاعل.response.send_message(f"🎉 تهانينا! قمت بتسليم مهمة (`{اسم_المهمة}`)
