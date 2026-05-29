@@ -27,7 +27,7 @@ if التوكن is None:
     sys.exit(1)
 
 قناة_التسجيل = None
-قناة_الرسائل_التلقائية = None
+رتبة_التذاكر_المسموح_لها = 0
 
 عملات_البداية = 1000
 رصيد_البداية = 0
@@ -63,6 +63,9 @@ if التوكن is None:
     "🎫 تواجه مشكلة؟ افتح تذكرة باستخدام الزر الموجود في القناة المخصصة",
     "💎 الرصيد المميز يعطيك ضعف الكمية عند الشراء من المتجر!",
 ]
+
+قناة_البانل_المحددة = 0
+قناة_الرسائل_التلقائية_المحددة = 0
 
 async def تهيئة_قاعدة_البيانات():
     async with aiosqlite.connect(مسار_قاعدة_البيانات) as قاعدة:
@@ -120,13 +123,6 @@ async def تهيئة_قاعدة_البيانات():
             اخر_تحديث_اليوم TEXT,
             اخر_تحديث_الاسبوع TEXT,
             اخر_تحديث_الشهر TEXT
-        )''')
-        await قاعدة.execute('''CREATE TABLE IF NOT EXISTS اعدادات_السيرفر (
-            guild_id TEXT PRIMARY KEY,
-            رتبة_التذاكر TEXT,
-            قناة_البانل TEXT,
-            قناة_الرسائل_التلقائية TEXT,
-            تم_الاعداد BOOLEAN DEFAULT 0
         )''')
         
         المؤشر = await قاعدة.execute("SELECT COUNT(*) FROM المتجر")
@@ -191,8 +187,6 @@ async def init_ticket_db():
             guild_id TEXT PRIMARY KEY,
             category_id TEXT,
             log_channel_id TEXT,
-            panel_channel_id TEXT,
-            panel_message_id TEXT,
             embed_title TEXT DEFAULT '🛡️ فتح تذكرة جديدة',
             embed_description TEXT DEFAULT 'اضغط على الزر أدناه لفتح تذكرة وسيقوم فريق الدعم بالتواصل معك قريباً.',
             embed_color TEXT DEFAULT '5865F2',
@@ -211,12 +205,6 @@ async def init_ticket_db():
             closed_by TEXT,
             reason TEXT
         )''')
-        await db.execute('''CREATE TABLE IF NOT EXISTS staff_roles (
-            guild_id TEXT,
-            role_id TEXT,
-            role_type TEXT,
-            PRIMARY KEY (guild_id, role_id)
-        )''')
         await db.execute('''CREATE TABLE IF NOT EXISTS blacklist (
             guild_id TEXT,
             user_id TEXT,
@@ -231,43 +219,39 @@ async def init_ticket_db():
             created_by TEXT,
             PRIMARY KEY (guild_id, tag_name)
         )''')
-        await db.execute('''CREATE TABLE IF NOT EXISTS auto_close_settings (
+        await db.execute('''CREATE TABLE IF NOT EXISTS اعدادات_السيرفر (
             guild_id TEXT PRIMARY KEY,
-            enabled INTEGER DEFAULT 0,
-            hours INTEGER DEFAULT 24
-        )''')
-        await db.execute('''CREATE TABLE IF NOT EXISTS language_settings (
-            guild_id TEXT PRIMARY KEY,
-            language TEXT DEFAULT 'en'
+            رتبة_التذاكر TEXT,
+            قناة_البانل TEXT,
+            قناة_الرسائل_التلقائية TEXT,
+            تم_الاعداد BOOLEAN DEFAULT 0
         )''')
         await db.commit()
 
 async def get_ticket_config(guild_id):
     async with aiosqlite.connect(مسار_تذاكر_البيانات) as db:
-        async with db.execute("SELECT category_id, log_channel_id, panel_channel_id, panel_message_id, embed_title, embed_description, embed_color, auto_close_hours FROM ticket_config WHERE guild_id = ?", (str(guild_id),)) as cursor:
+        async with db.execute("SELECT category_id, log_channel_id, embed_title, embed_description, embed_color, auto_close_hours FROM ticket_config WHERE guild_id = ?", (str(guild_id),)) as cursor:
             row = await cursor.fetchone()
             if row:
                 return {
                     "category_id": row[0],
                     "log_channel_id": row[1],
-                    "panel_channel_id": row[2],
-                    "panel_message_id": row[3],
-                    "embed_title": row[4],
-                    "embed_description": row[5],
-                    "embed_color": row[6],
-                    "auto_close_hours": row[7]
+                    "embed_title": row[2],
+                    "embed_description": row[3],
+                    "embed_color": row[4],
+                    "auto_close_hours": row[5]
                 }
             return None
 
-async def save_ticket_config(guild_id, category_id=None, log_channel_id=None, panel_channel_id=None, panel_message_id=None, embed_title=None, embed_description=None, embed_color=None, auto_close_hours=None):
+async def save_ticket_config(guild_id, category_id=None, log_channel_id=None, embed_title=None, embed_description=None, embed_color=None, auto_close_hours=None):
     async with aiosqlite.connect(مسار_تذاكر_البيانات) as db:
         existing = await get_ticket_config(guild_id)
         if existing:
-            await db.execute("UPDATE ticket_config SET category_id = COALESCE(?, category_id), log_channel_id = COALESCE(?, log_channel_id), panel_channel_id = COALESCE(?, panel_channel_id), panel_message_id = COALESCE(?, panel_message_id), embed_title = COALESCE(?, embed_title), embed_description = COALESCE(?, embed_description), embed_color = COALESCE(?, embed_color), auto_close_hours = COALESCE(?, auto_close_hours) WHERE guild_id = ?",
-                            (category_id, log_channel_id, panel_channel_id, panel_message_id, embed_title, embed_description, embed_color, auto_close_hours, str(guild_id)))
+            await db.execute("UPDATE ticket_config SET category_id = COALESCE(?, category_id), log_channel_id = COALESCE(?, log_channel_id), embed_title = COALESCE(?, embed_title), embed_description = COALESCE(?, embed_description), embed_color = COALESCE(?, embed_color), auto_close_hours = COALESCE(?, auto_close_hours) WHERE guild_id = ?",
+                            (category_id, log_channel_id, embed_title, embed_description, embed_color, auto_close_hours, str(guild_id)))
         else:
-            await db.execute("INSERT INTO ticket_config (guild_id, category_id, log_channel_id, panel_channel_id, panel_message_id, embed_title, embed_description, embed_color, auto_close_hours) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                            (str(guild_id), category_id, log_channel_id, panel_channel_id, panel_message_id, embed_title or '🛡️ فتح تذكرة جديدة', embed_description or 'اضغط على الزر أدناه لفتح تذكرة وسيقوم فريق الدعم بالتواصل معك قريباً.', embed_color or '5865F2', auto_close_hours or 24))
+            await db.execute("INSERT INTO ticket_config (guild_id, category_id, log_channel_id, embed_title, embed_description, embed_color, auto_close_hours) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                            (str(guild_id), category_id, log_channel_id, embed_title or '🛡️ فتح تذكرة جديدة', embed_description or 'اضغط على الزر أدناه لفتح تذكرة وسيقوم فريق الدعم بالتواصل معك قريباً.', embed_color or '5865F2', auto_close_hours or 24))
         await db.commit()
 
 async def create_ticket_channel(guild, creator, category_id):
@@ -284,14 +268,6 @@ async def create_ticket_channel(guild, creator, category_id):
         guild.default_role: discord.PermissionOverwrite(read_messages=False),
         creator: discord.PermissionOverwrite(read_messages=True, send_messages=True, attach_files=True, embed_links=True, add_reactions=True)
     }
-    
-    async with aiosqlite.connect(مسار_تذاكر_البيانات) as db:
-        async with db.execute("SELECT role_id FROM staff_roles WHERE guild_id = ? AND role_type = 'admin'", (str(guild.id),)) as cursor:
-            admin_roles = await cursor.fetchall()
-            for role_id in admin_roles:
-                role = guild.get_role(int(role_id[0]))
-                if role:
-                    overwrites[role] = discord.PermissionOverwrite(read_messages=True, send_messages=True, attach_files=True, embed_links=True, add_reactions=True)
     
     channel = await guild.create_text_channel(name=channel_name, category=category, overwrites=overwrites)
     return channel
@@ -312,7 +288,7 @@ async def is_authorized_staff(member, guild_id):
     async with aiosqlite.connect(مسار_تذاكر_البيانات) as db:
         async with db.execute("SELECT رتبة_التذاكر FROM اعدادات_السيرفر WHERE guild_id = ?", (str(guild_id),)) as cursor:
             row = await cursor.fetchone()
-            if row and row[0]:
+            if row and row[0] and row[0] != "0":
                 role = member.guild.get_role(int(row[0]))
                 if role and role in member.roles:
                     return True
@@ -393,21 +369,6 @@ async def create_ticket_record(guild_id, channel_id, creator_id, creator_name):
         await db.execute("INSERT INTO tickets (guild_id, channel_id, creator_id, creator_name, status, created_at) VALUES (?, ?, ?, ?, 'open', ?)",
                         (str(guild_id), str(channel_id), str(creator_id), creator_name, int(datetime.now().timestamp())))
         await db.commit()
-
-async def add_staff_role(guild_id, role_id, role_type):
-    async with aiosqlite.connect(مسار_تذاكر_البيانات) as db:
-        await db.execute("INSERT OR REPLACE INTO staff_roles (guild_id, role_id, role_type) VALUES (?, ?, ?)", (str(guild_id), str(role_id), role_type))
-        await db.commit()
-
-async def remove_staff_role(guild_id, role_id):
-    async with aiosqlite.connect(مسار_تذاكر_البيانات) as db:
-        await db.execute("DELETE FROM staff_roles WHERE guild_id = ? AND role_id = ?", (str(guild_id), str(role_id)))
-        await db.commit()
-
-async def get_all_staff_roles(guild_id):
-    async with aiosqlite.connect(مسار_تذاكر_البيانات) as db:
-        async with db.execute("SELECT role_id, role_type FROM staff_roles WHERE guild_id = ?", (str(guild_id),)) as cursor:
-            return await cursor.fetchall()
 
 class TicketButton(discord.ui.View):
     def __init__(self, config):
@@ -592,197 +553,23 @@ async def ارسال_رسائل_تلقائية():
             pass
         await asyncio.sleep(300)
 
-async def احصل_على_مستخدم(المعرف):
-    async with aiosqlite.connect(مسار_قاعدة_البيانات) as قاعدة:
-        async with قاعدة.execute("SELECT عملات, رصيد, اخر_يومي, اخر_ساعي, الفريق_النشط, اخر_سرقة FROM المستخدمين WHERE user_id = ?", (المعرف,)) as مؤشر:
-            الصف = await مؤشر.fetchone()
-            if الصف is None:
-                await قاعدة.execute("INSERT INTO المستخدمين (user_id, عملات, رصيد) VALUES (?, ?, ?)", (المعرف, عملات_البداية, رصيد_البداية))
-                await قاعدة.execute("INSERT OR IGNORE INTO الفرق (user_id, slot, الاسم, الصحة) VALUES (?, 0, '', ?), (?, 1, '', ?)", (المعرف, صحة_الفريق_البدائية, المعرف, صحة_الفريق_البدائية))
-                await قاعدة.commit()
-                return {"عملات": عملات_البداية, "رصيد": رصيد_البداية, "اخر_يومي": 0, "اخر_ساعي": 0, "الفريق_النشط": 0, "اخر_سرقة": 0}
-            return {"عملات": الصف[0], "رصيد": الصف[1], "اخر_يومي": الصف[2], "اخر_ساعي": الصف[3], "الفريق_النشط": الصف[4], "اخر_سرقة": الصف[5] if len(الصف) > 5 else 0}
-
-async def تحديث_مستخدم(المعرف, **kwargs):
-    async with aiosqlite.connect(مسار_قاعدة_البيانات) as قاعدة:
-        for مفتاح, قيمة in kwargs.items():
-            await قاعدة.execute(f"UPDATE المستخدمين SET {مفتاح} = ? WHERE user_id = ?", (قيمة, المعرف))
-        await قاعدة.commit()
-
-async def احصل_على_فريق(المعرف, الرقم, مع_الصحة=False):
-    async with aiosqlite.connect(مسار_قاعدة_البيانات) as قاعدة:
-        if مع_الصحة:
-            async with قاعدة.execute("SELECT الاسم, الصحة, مخفي_حتى FROM الفرق WHERE user_id = ? AND slot = ?", (المعرف, الرقم)) as مؤشر:
-                الصف = await مؤشر.fetchone()
-                return (الصف[0], الصف[1], الصف[2]) if الصف else ("", صحة_الفريق_البدائية, 0)
-        else:
-            async with قاعدة.execute("SELECT الاسم FROM الفرق WHERE user_id = ? AND slot = ?", (المعرف, الرقم)) as مؤشر:
-                الصف = await مؤشر.fetchone()
-                return الصف[0] if الصف else ""
-
-async def تعيين_فريق(المعرف, الرقم, الاسم):
-    async with aiosqlite.connect(مسار_قاعدة_البيانات) as قاعدة:
-        await قاعدة.execute("INSERT OR REPLACE INTO الفرق (user_id, slot, الاسم, الصحة) VALUES (?, ?, ?, COALESCE((SELECT الصحة FROM الفرق WHERE user_id=? AND slot=?), ?))",
-                            (المعرف, الرقم, الاسم, المعرف, الرقم, صحة_الفريق_البدائية))
-        await قاعدة.commit()
-
-async def تحديث_صحة_الفريق(المعرف, الرقم, صحة_جديدة):
-    async with aiosqlite.connect(مسار_قاعدة_البيانات) as قاعدة:
-        await قاعدة.execute("UPDATE الفرق SET الصحة = ? WHERE user_id = ? AND slot = ?", (صحة_جديدة, المعرف, الرقم))
-        await قاعدة.commit()
-
-async def تحديث_اختفاء_الفريق(المعرف, الرقم, حتى):
-    async with aiosqlite.connect(مسار_قاعدة_البيانات) as قاعدة:
-        await قاعدة.execute("UPDATE الفرق SET مخفي_حتى = ? WHERE user_id = ? AND slot = ?", (حتى, المعرف, الرقم))
-        await قاعدة.commit()
-
-async def احصل_على_كل_المستخدمين():
-    async with aiosqlite.connect(مسار_قاعدة_البيانات) as قاعدة:
-        async with قاعدة.execute("SELECT user_id, عملات FROM المستخدمين") as مؤشر:
-            return await مؤشر.fetchall()
-
-async def أضف_إلى_المخزون(المعرف, رقم_السلعة, كمية):
-    async with aiosqlite.connect(مسار_قاعدة_البيانات) as قاعدة:
-        await قاعدة.execute("INSERT INTO المخزون (user_id, item_id, الكمية) VALUES (?, ?, ?) ON CONFLICT(user_id, item_id) DO UPDATE SET الكمية = الكمية + ?",
-                            (المعرف, رقم_السلعة, كمية, كمية))
-        await قاعدة.commit()
-
-async def احذف_من_المخزون(المعرف, رقم_السلعة, كمية):
-    async with aiosqlite.connect(مسار_قاعدة_البيانات) as قاعدة:
-        await قاعدة.execute("UPDATE المخزون SET الكمية = الكمية - ? WHERE user_id = ? AND item_id = ?", (كمية, المعرف, رقم_السلعة))
-        await قاعدة.commit()
-
-async def احصل_على_المخزون(المعرف):
-    async with aiosqlite.connect(مسار_قاعدة_البيانات) as قاعدة:
-        async with قاعدة.execute("SELECT item_id, الكمية FROM المخزون WHERE user_id = ?", (المعرف,)) as مؤشر:
-            return await مؤشر.fetchall()
-
-async def احصل_على_سلعة_من_المتجر(رقم_السلعة):
-    async with aiosqlite.connect(مسار_قاعدة_البيانات) as قاعدة:
-        async with قاعدة.execute("SELECT item_id, الاسم, سعر_عملات, سعر_رصيد, الوصف FROM المتجر WHERE item_id = ?", (رقم_السلعة,)) as مؤشر:
-            الصف = await مؤشر.fetchone()
-            return {"id": الصف[0], "name": الصف[1], "coinPrice": الصف[2], "creditPrice": الصف[3], "desc": الصف[4]} if الصف else None
-
-async def احصل_على_كل_المتجر():
-    async with aiosqlite.connect(مسار_قاعدة_البيانات) as قاعدة:
-        async with قاعدة.execute("SELECT item_id, الاسم, سعر_عملات, سعر_رصيد, الوصف FROM المتجر ORDER BY item_id") as مؤشر:
-            الصفوف = await مؤشر.fetchall()
-            return [{"id": ص[0], "name": ص[1], "coinPrice": ص[2], "creditPrice": ص[3], "desc": ص[4]} for ص in الصفوف]
-
-async def احصل_على_سلع_السوق_السوداء(الصفحة):
-    async with aiosqlite.connect(مسار_قاعدة_البيانات) as قاعدة:
-        async with قاعدة.execute("SELECT item_id, الاسم, سعر_عملات, سعر_رصيد, الوصف FROM السوق_السوداء WHERE الصفحة = ? ORDER BY item_id", (الصفحة,)) as مؤشر:
-            الصفوف = await مؤشر.fetchall()
-            return [{"id": ص[0], "name": ص[1], "coinPrice": ص[2], "creditPrice": ص[3], "desc": ص[4]} for ص in الصفوف]
-
-async def احصل_على_سلعة_من_السوق_السوداء(رقم_السلعة):
-    async with aiosqlite.connect(مسار_قاعدة_البيانات) as قاعدة:
-        async with قاعدة.execute("SELECT item_id, الاسم, سعر_عملات, سعر_رصيد, الوصف FROM السوق_السوداء WHERE item_id = ?", (رقم_السلعة,)) as مؤشر:
-            الصف = await مؤشر.fetchone()
-            return {"id": الصف[0], "name": الصف[1], "coinPrice": الصف[2], "creditPrice": الصف[3], "desc": الصف[4]} if الصف else None
-
-async def احصل_على_الأسلحة_المتاحة(المعرف):
-    المخزون = await احصل_على_المخزون(المعرف)
-    الأسلحة = []
+@البوت.tree.command(name="اعدادات", description="إعداد البوت في السيرفر (لأول مرة)")
+async def اعدادات_البوت(interaction: discord.Interaction, role: discord.Role, panel_channel: discord.TextChannel, auto_channel: discord.TextChannel):
+    if not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message("❌ هذا الأمر مخصص للأونر فقط!", ephemeral=True)
+        return
     
-    أسلحة_العادي = {
-        2: ("🗡️ سيف حديدي", 25),
-        7: ("🐉 ناب تنين", 50),
-        9: ("⚡ حذاء البرق", 20),
-        12: ("🏹 قوس إلف", 35),
-        16: ("🐺 رفيق ذئب", 45),
-        23: ("🔥 عصا النار", 40)
-    }
+    async with aiosqlite.connect(مسار_تذاكر_البيانات) as db:
+        await db.execute("INSERT OR REPLACE INTO اعدادات_السيرفر (guild_id, رتبة_التذاكر, قناة_البانل, قناة_الرسائل_التلقائية, تم_الاعداد) VALUES (?, ?, ?, ?, 1)",
+                        (str(interaction.guild_id), str(role.id), str(panel_channel.id), str(auto_channel.id)))
+        await db.commit()
     
-    for رقم_السلعة, كمية in المخزون:
-        if كمية > 0:
-            if رقم_السلعة in [1, 5]:
-                continue
-            if رقم_السلعة in أسلحة_العادي:
-                الاسم, الضرر = أسلحة_العادي[رقم_السلعة]
-                الأسلحة.append({"id": رقم_السلعة, "name": الاسم, "damage": الضرر})
-            elif 1 <= رقم_السلعة <= 50:
-                سلعة_بلاك = await احصل_على_سلعة_من_السوق_السوداء(رقم_السلعة)
-                if سلعة_بلاك:
-                    الضرر = 15 + (رقم_السلعة * 2)
-                    الأسلحة.append({"id": رقم_السلعة, "name": سلعة_بلاك["name"], "damage": الضرر})
-    
-    return الأسلحة
-
-async def يمتلك_سلعة(المعرف, رقم_السلعة):
-    المخزون = await احصل_على_المخزون(المعرف)
-    for رقم, كمية in المخزون:
-        if رقم == رقم_السلعة and كمية > 0:
-            return True
-    return False
-
-async def ارسال_تسجيل(البوت, العنوان, الوصف, اللون=0xFF4500):
-    if قناة_التسجيل:
-        القناة = البوت.get_channel(قناة_التسجيل)
-        if القناة:
-            تضمين = discord.Embed(title=العنوان, description=الوصف, color=اللون, timestamp=datetime.now())
-            await القناة.send(embed=تضمين)
-
-الصلاحيات = discord.Intents.default()
-الصلاحيات.message_content = True
-الصلاحيات.members = True
-
-البوت = commands.Bot(command_prefix="!", intents=الصلاحيات)
-
-class السوق_السوداء_View(discord.ui.View):
-    def __init__(self, الصفحة_الحالية: int = 1):
-        super().__init__(timeout=120)
-        self.الصفحة_الحالية = الصفحة_الحالية
-
-    @discord.ui.button(label="◀ السابقة", style=discord.ButtonStyle.secondary)
-    async def السابق_callback(self, التفاعل: discord.Interaction):
-        if self.الصفحة_الحالية > 1:
-            self.الصفحة_الحالية -= 1
-            العناصر = await احصل_على_سلع_السوق_السوداء(self.الصفحة_الحالية)
-            تضمين = discord.Embed(title=f"🔫 السوق السوداء - الصفحة {self.الصفحة_الحالية}/5", color=0xFF0000)
-            for عنصر in العناصر:
-                تضمين.add_field(
-                    name=f"{عنصر['id']}. {عنصر['name']}", 
-                    value=f"🪙 {عنصر['coinPrice']} عملة\n💎 {عنصر['creditPrice']} رصيد\n📝 *{عنصر['desc']}*", 
-                    inline=True
-                )
-            await التفاعل.response.edit_message(embed=تضمين, view=self)
-        else:
-            await التفاعل.response.send_message("❌ أنت في الصفحة الأولى بالفعل!", ephemeral=True)
-    
-    @discord.ui.button(label="التالي ▶", style=discord.ButtonStyle.secondary)
-    async def التالي_callback(self, التفاعل: discord.Interaction):
-        if self.الصفحة_الحالية < 5:
-            self.الصفحة_الحالية += 1
-            العناصر = await احصل_على_سلع_السوق_السوداء(self.الصفحة_الحالية)
-            تضمين = discord.Embed(title=f"🔫 السوق السوداء - الصفحة {self.الصفحة_الحالية}/5", color=0xFF0000)
-            for عنصر in العناصر:
-                تضمين.add_field(
-                    name=f"{عنصر['id']}. {عنصر['name']}", 
-                    value=f"🪙 {عنصر['coinPrice']} عملة\n💎 {عنصر['creditPrice']} رصيد\n📝 *{عنصر['desc']}*", 
-                    inline=True
-                )
-            await التفاعل.response.edit_message(embed=تضمين, view=self)
-        else:
-            await التفاعل.response.send_message("❌ أنت في الصفحة الأخيرة (الخامسة) بالفعل!", ephemeral=True)
-
-@البوت.tree.command(name="help", description="عرض جميع الأوامر")
-async def مساعدة(التفاعل: discord.Interaction):
-    تضمين = discord.Embed(title="🤖 قائمة أوامر البوت", color=0x5865F2)
-    تضمين.add_field(name="💰 الاقتصاد", value="`/رصيدي` `/يومي` `/ساعي` `/اعمل` `/الاغنياء`", inline=False)
-    تضمين.add_field(name="🛒 المتجر العادي", value="`/المتجر` `/اشتري` `/مخزني`", inline=False)
-    تضمين.add_field(name="🔫 السوق السوداء", value="`/بلاك_ماركت` `/شراء_بلاك`", inline=False)
-    تضمين.add_field(name="👥 الفرق", value="`/تعيين_فريق` `/تفعيل_فريق` `/فرقي` `/دخول_فريق`", inline=False)
-    تضمين.add_field(name="⚔️ القتال", value="`/هجوم @لاعب` (اختر سلاحك من المخزون)", inline=False)
-    تضمين.add_field(name="💰 السرقة", value="`/سرقة @لاعب` (كل 10 دقائق)", inline=False)
-    تضمين.add_field(name="📋 المهام", value="`/مهامي` `/تسليم_مهمة`", inline=False)
-    تضمين.add_field(name="ℹ️ معلومات البوت", value="`/وصف` (روابط المطور وسيرفر الدعم)", inline=False)
-    تضمين.add_field(name="👑 الإدارة", value="`/اعطاء_فلوس` `/حذف_فريق` `/اذاعة` (للأونر فقط)", inline=False)
-    تضمين.add_field(name="🎫 نظام التذاكر", value="`/اعداد_التذاكر` `/تعيين_رتبة_التذاكر` `/تعيين_قناة_البانل` `/تعيين_قناة_الرسائل`", inline=False)
-    تضمين.add_field(name="📊 إحصائيات الرسائل", value="`/brq` (عرض عدد رسائلك)", inline=False)
-    تضمين.add_field(name="🔗 روابط", value=f"[دعم السيرفر]({رابط_السيرفر})", inline=False)
-    تضمين.set_footer(text=f"تم تطوير هذا البوت بواسطة {اسم_المطور} | {معرف_المطور}")
-    await التفاعل.response.send_message(embed=تضمين)
+    embed = discord.Embed(
+        title="✅ تم إعداد البوت بنجاح!",
+        description=f"**الرتبة المسؤولة عن التذاكر:** {role.mention}\n**قناة البانل:** {panel_channel.mention}\n**قناة الرسائل التلقائية:** {auto_channel.mention}",
+        color=0x00FF00
+    )
+    await interaction.response.send_message(embed=embed)
 
 @البوت.tree.command(name="اعداد_التذاكر", description="إعداد نظام التذاكر (الأونر فقط)")
 @app_commands.describe(category="الفئة التي ستُنشأ بها التذاكر", log_channel="قناة السجلات", auto_close_hours="عدد ساعات الإغلاق التلقائي")
@@ -819,16 +606,6 @@ async def set_panel_channel(interaction: discord.Interaction, channel: discord.T
         await db.execute("INSERT OR REPLACE INTO اعدادات_السيرفر (guild_id, قناة_البانل, تم_الاعداد) VALUES (?, ?, 1)", (str(interaction.guild_id), str(channel.id)))
         await db.commit()
     
-    config = await get_ticket_config(interaction.guild_id)
-    if config:
-        embed = discord.Embed(
-            title=config["embed_title"],
-            description=config["embed_description"],
-            color=int(config["embed_color"], 16)
-        )
-        view = TicketButton(config)
-        await channel.send(embed=embed, view=view)
-    
     await interaction.response.send_message(f"✅ تم تعيين قناة البانل إلى {channel.mention}")
 
 @البوت.tree.command(name="تعيين_قناة_الرسائل", description="تعيين القناة التي سيتم إرسال الرسائل التلقائية فيها")
@@ -861,6 +638,24 @@ async def brq(interaction: discord.Interaction):
     embed.add_field(name="📅 الشهر", value=str(الشهر), inline=True)
     embed.add_field(name="📊 المجموع الكلي", value=str(المجموع), inline=True)
     await interaction.response.send_message(embed=embed)
+
+@البوت.tree.command(name="help", description="عرض جميع الأوامر")
+async def مساعدة(التفاعل: discord.Interaction):
+    تضمين = discord.Embed(title="🤖 قائمة أوامر البوت", color=0x5865F2)
+    تضمين.add_field(name="💰 الاقتصاد", value="`/رصيدي` `/يومي` `/ساعي` `/اعمل` `/الاغنياء`", inline=False)
+    تضمين.add_field(name="🛒 المتجر العادي", value="`/المتجر` `/اشتري` `/مخزني`", inline=False)
+    تضمين.add_field(name="🔫 السوق السوداء", value="`/بلاك_ماركت` `/شراء_بلاك`", inline=False)
+    تضمين.add_field(name="👥 الفرق", value="`/تعيين_فريق` `/تفعيل_فريق` `/فرقي` `/دخول_فريق`", inline=False)
+    تضمين.add_field(name="⚔️ القتال", value="`/هجوم @لاعب` (اختر سلاحك من المخزون)", inline=False)
+    تضمين.add_field(name="💰 السرقة", value="`/سرقة @لاعب` (كل 10 دقائق)", inline=False)
+    تضمين.add_field(name="📋 المهام", value="`/مهامي` `/تسليم_مهمة`", inline=False)
+    تضمين.add_field(name="ℹ️ معلومات البوت", value="`/وصف` (روابط المطور وسيرفر الدعم)", inline=False)
+    تضمين.add_field(name="👑 الإدارة", value="`/اعطاء_فلوس` `/حذف_فريق` `/اذاعة` (للأونر فقط)", inline=False)
+    تضمين.add_field(name="⚙️ إعدادات البوت", value="`/اعدادات` `/اعداد_التذاكر` `/تعيين_رتبة_التذاكر` `/تعيين_قناة_البانل` `/تعيين_قناة_الرسائل`", inline=False)
+    تضمين.add_field(name="📊 إحصائيات الرسائل", value="`/brq` (عرض عدد رسائلك)", inline=False)
+    تضمين.add_field(name="🔗 روابط", value=f"[دعم السيرفر]({رابط_السيرفر})", inline=False)
+    تضمين.set_footer(text=f"تم تطوير هذا البوت بواسطة {اسم_المطور} | {معرف_المطور}")
+    await التفاعل.response.send_message(embed=تضمين)
 
 @البوت.tree.command(name="رصيدي", description="عرض رصيدك")
 async def رصيدي(التفاعل: discord.Interaction):
@@ -1350,6 +1145,180 @@ async def اشتري(التفاعل: discord.Interaction, رقم_السلعة: i
 
     await أضف_إلى_المخزون(المعرف, رقم_السلعة, العدد_النهائي)
     await التفاعل.response.send_message(f"✅ اشتريت {العدد_النهائي} × {السلعة['name']} وتم إضافتها بنجاح إلى مخزنك.")
+
+async def احصل_على_مستخدم(المعرف):
+    async with aiosqlite.connect(مسار_قاعدة_البيانات) as قاعدة:
+        async with قاعدة.execute("SELECT عملات, رصيد, اخر_يومي, اخر_ساعي, الفريق_النشط, اخر_سرقة FROM المستخدمين WHERE user_id = ?", (المعرف,)) as مؤشر:
+            الصف = await مؤشر.fetchone()
+            if الصف is None:
+                await قاعدة.execute("INSERT INTO المستخدمين (user_id, عملات, رصيد) VALUES (?, ?, ?)", (المعرف, عملات_البداية, رصيد_البداية))
+                await قاعدة.execute("INSERT OR IGNORE INTO الفرق (user_id, slot, الاسم, الصحة) VALUES (?, 0, '', ?), (?, 1, '', ?)", (المعرف, صحة_الفريق_البدائية, المعرف, صحة_الفريق_البدائية))
+                await قاعدة.commit()
+                return {"عملات": عملات_البداية, "رصيد": رصيد_البداية, "اخر_يومي": 0, "اخر_ساعي": 0, "الفريق_النشط": 0, "اخر_سرقة": 0}
+            return {"عملات": الصف[0], "رصيد": الصف[1], "اخر_يومي": الصف[2], "اخر_ساعي": الصف[3], "الفريق_النشط": الصف[4], "اخر_سرقة": الصف[5] if len(الصف) > 5 else 0}
+
+async def تحديث_مستخدم(المعرف, **kwargs):
+    async with aiosqlite.connect(مسار_قاعدة_البيانات) as قاعدة:
+        for مفتاح, قيمة in kwargs.items():
+            await قاعدة.execute(f"UPDATE المستخدمين SET {مفتاح} = ? WHERE user_id = ?", (قيمة, المعرف))
+        await قاعدة.commit()
+
+async def احصل_على_فريق(المعرف, الرقم, مع_الصحة=False):
+    async with aiosqlite.connect(مسار_قاعدة_البيانات) as قاعدة:
+        if مع_الصحة:
+            async with قاعدة.execute("SELECT الاسم, الصحة, مخفي_حتى FROM الفرق WHERE user_id = ? AND slot = ?", (المعرف, الرقم)) as مؤشر:
+                الصف = await مؤشر.fetchone()
+                return (الصف[0], الصف[1], الصف[2]) if الصف else ("", صحة_الفريق_البدائية, 0)
+        else:
+            async with قاعدة.execute("SELECT الاسم FROM الفرق WHERE user_id = ? AND slot = ?", (المعرف, الرقم)) as مؤشر:
+                الصف = await مؤشر.fetchone()
+                return الصف[0] if الصف else ""
+
+async def تعيين_فريق(المعرف, الرقم, الاسم):
+    async with aiosqlite.connect(مسار_قاعدة_البيانات) as قاعدة:
+        await قاعدة.execute("INSERT OR REPLACE INTO الفرق (user_id, slot, الاسم, الصحة) VALUES (?, ?, ?, COALESCE((SELECT الصحة FROM الفرق WHERE user_id=? AND slot=?), ?))",
+                            (المعرف, الرقم, الاسم, المعرف, الرقم, صحة_الفريق_البدائية))
+        await قاعدة.commit()
+
+async def تحديث_صحة_الفريق(المعرف, الرقم, صحة_جديدة):
+    async with aiosqlite.connect(مسار_قاعدة_البيانات) as قاعدة:
+        await قاعدة.execute("UPDATE الفرق SET الصحة = ? WHERE user_id = ? AND slot = ?", (صحة_جديدة, المعرف, الرقم))
+        await قاعدة.commit()
+
+async def تحديث_اختفاء_الفريق(المعرف, الرقم, حتى):
+    async with aiosqlite.connect(مسار_قاعدة_البيانات) as قاعدة:
+        await قاعدة.execute("UPDATE الفرق SET مخفي_حتى = ? WHERE user_id = ? AND slot = ?", (حتى, المعرف, الرقم))
+        await قاعدة.commit()
+
+async def احصل_على_كل_المستخدمين():
+    async with aiosqlite.connect(مسار_قاعدة_البيانات) as قاعدة:
+        async with قاعدة.execute("SELECT user_id, عملات FROM المستخدمين") as مؤشر:
+            return await مؤشر.fetchall()
+
+async def أضف_إلى_المخزون(المعرف, رقم_السلعة, كمية):
+    async with aiosqlite.connect(مسار_قاعدة_البيانات) as قاعدة:
+        await قاعدة.execute("INSERT INTO المخزون (user_id, item_id, الكمية) VALUES (?, ?, ?) ON CONFLICT(user_id, item_id) DO UPDATE SET الكمية = الكمية + ?",
+                            (المعرف, رقم_السلعة, كمية, كمية))
+        await قاعدة.commit()
+
+async def احذف_من_المخزون(المعرف, رقم_السلعة, كمية):
+    async with aiosqlite.connect(مسار_قاعدة_البيانات) as قاعدة:
+        await قاعدة.execute("UPDATE المخزون SET الكمية = الكمية - ? WHERE user_id = ? AND item_id = ?", (كمية, المعرف, رقم_السلعة))
+        await قاعدة.commit()
+
+async def احصل_على_المخزون(المعرف):
+    async with aiosqlite.connect(مسار_قاعدة_البيانات) as قاعدة:
+        async with قاعدة.execute("SELECT item_id, الكمية FROM المخزون WHERE user_id = ?", (المعرف,)) as مؤشر:
+            return await مؤشر.fetchall()
+
+async def احصل_على_سلعة_من_المتجر(رقم_السلعة):
+    async with aiosqlite.connect(مسار_قاعدة_البيانات) as قاعدة:
+        async with قاعدة.execute("SELECT item_id, الاسم, سعر_عملات, سعر_رصيد, الوصف FROM المتجر WHERE item_id = ?", (رقم_السلعة,)) as مؤشر:
+            الصف = await مؤشر.fetchone()
+            return {"id": الصف[0], "name": الصف[1], "coinPrice": الصف[2], "creditPrice": الصف[3], "desc": الصف[4]} if الصف else None
+
+async def احصل_على_كل_المتجر():
+    async with aiosqlite.connect(مسار_قاعدة_البيانات) as قاعدة:
+        async with قاعدة.execute("SELECT item_id, الاسم, سعر_عملات, سعر_رصيد, الوصف FROM المتجر ORDER BY item_id") as مؤشر:
+            الصفوف = await مؤشر.fetchall()
+            return [{"id": ص[0], "name": ص[1], "coinPrice": ص[2], "creditPrice": ص[3], "desc": ص[4]} for ص in الصفوف]
+
+async def احصل_على_سلع_السوق_السوداء(الصفحة):
+    async with aiosqlite.connect(مسار_قاعدة_البيانات) as قاعدة:
+        async with قاعدة.execute("SELECT item_id, الاسم, سعر_عملات, سعر_رصيد, الوصف FROM السوق_السوداء WHERE الصفحة = ? ORDER BY item_id", (الصفحة,)) as مؤشر:
+            الصفوف = await مؤشر.fetchall()
+            return [{"id": ص[0], "name": ص[1], "coinPrice": ص[2], "creditPrice": ص[3], "desc": ص[4]} for ص in الصفوف]
+
+async def احصل_على_سلعة_من_السوق_السوداء(رقم_السلعة):
+    async with aiosqlite.connect(مسار_قاعدة_البيانات) as قاعدة:
+        async with قاعدة.execute("SELECT item_id, الاسم, سعر_عملات, سعر_رصيد, الوصف FROM السوق_السوداء WHERE item_id = ?", (رقم_السلعة,)) as مؤشر:
+            الصف = await مؤشر.fetchone()
+            return {"id": الصف[0], "name": الصف[1], "coinPrice": الصف[2], "creditPrice": الصف[3], "desc": الصف[4]} if الصف else None
+
+async def احصل_على_الأسلحة_المتاحة(المعرف):
+    المخزون = await احصل_على_المخزون(المعرف)
+    الأسلحة = []
+    
+    أسلحة_العادي = {
+        2: ("🗡️ سيف حديدي", 25),
+        7: ("🐉 ناب تنين", 50),
+        9: ("⚡ حذاء البرق", 20),
+        12: ("🏹 قوس إلف", 35),
+        16: ("🐺 رفيق ذئب", 45),
+        23: ("🔥 عصا النار", 40)
+    }
+    
+    for رقم_السلعة, كمية in المخزون:
+        if كمية > 0:
+            if رقم_السلعة in [1, 5]:
+                continue
+            if رقم_السلعة in أسلحة_العادي:
+                الاسم, الضرر = أسلحة_العادي[رقم_السلعة]
+                الأسلحة.append({"id": رقم_السلعة, "name": الاسم, "damage": الضرر})
+            elif 1 <= رقم_السلعة <= 50:
+                سلعة_بلاك = await احصل_على_سلعة_من_السوق_السوداء(رقم_السلعة)
+                if سلعة_بلاك:
+                    الضرر = 15 + (رقم_السلعة * 2)
+                    الأسلحة.append({"id": رقم_السلعة, "name": سلعة_بلاك["name"], "damage": الضرر})
+    
+    return الأسلحة
+
+async def يمتلك_سلعة(المعرف, رقم_السلعة):
+    المخزون = await احصل_على_المخزون(المعرف)
+    for رقم, كمية in المخزون:
+        if رقم == رقم_السلعة and كمية > 0:
+            return True
+    return False
+
+async def ارسال_تسجيل(البوت, العنوان, الوصف, اللون=0xFF4500):
+    if قناة_التسجيل:
+        القناة = البوت.get_channel(قناة_التسجيل)
+        if القناة:
+            تضمين = discord.Embed(title=العنوان, description=الوصف, color=اللون, timestamp=datetime.now())
+            await القناة.send(embed=تضمين)
+
+الصلاحيات = discord.Intents.default()
+الصلاحيات.message_content = True
+الصلاحيات.members = True
+
+البوت = commands.Bot(command_prefix="!", intents=الصلاحيات)
+
+class السوق_السوداء_View(discord.ui.View):
+    def __init__(self, الصفحة_الحالية: int = 1):
+        super().__init__(timeout=120)
+        self.الصفحة_الحالية = الصفحة_الحالية
+
+    @discord.ui.button(label="◀ السابقة", style=discord.ButtonStyle.secondary)
+    async def السابق_callback(self, التفاعل: discord.Interaction):
+        if self.الصفحة_الحالية > 1:
+            self.الصفحة_الحالية -= 1
+            العناصر = await احصل_على_سلع_السوق_السوداء(self.الصفحة_الحالية)
+            تضمين = discord.Embed(title=f"🔫 السوق السوداء - الصفحة {self.الصفحة_الحالية}/5", color=0xFF0000)
+            for عنصر in العناصر:
+                تضمين.add_field(
+                    name=f"{عنصر['id']}. {عنصر['name']}", 
+                    value=f"🪙 {عنصر['coinPrice']} عملة\n💎 {عنصر['creditPrice']} رصيد\n📝 *{عنصر['desc']}*", 
+                    inline=True
+                )
+            await التفاعل.response.edit_message(embed=تضمين, view=self)
+        else:
+            await التفاعل.response.send_message("❌ أنت في الصفحة الأولى بالفعل!", ephemeral=True)
+    
+    @discord.ui.button(label="التالي ▶", style=discord.ButtonStyle.secondary)
+    async def التالي_callback(self, التفاعل: discord.Interaction):
+        if self.الصفحة_الحالية < 5:
+            self.الصفحة_الحالية += 1
+            العناصر = await احصل_على_سلع_السوق_السوداء(self.الصفحة_الحالية)
+            تضمين = discord.Embed(title=f"🔫 السوق السوداء - الصفحة {self.الصفحة_الحالية}/5", color=0xFF0000)
+            for عنصر in العناصر:
+                تضمين.add_field(
+                    name=f"{عنصر['id']}. {عنصر['name']}", 
+                    value=f"🪙 {عنصر['coinPrice']} عملة\n💎 {عنصر['creditPrice']} رصيد\n📝 *{عنصر['desc']}*", 
+                    inline=True
+                )
+            await التفاعل.response.edit_message(embed=تضمين, view=self)
+        else:
+            await التفاعل.response.send_message("❌ أنت في الصفحة الأخيرة (الخامسة) بالفعل!", ephemeral=True)
 
 @البوت.event
 async def on_ready():
