@@ -2,6 +2,8 @@
 import discord
 from discord.ext import commands
 import asyncio
+import aiosqlite
+import time
 
 رتبة_التذاكر_المسموح_لها = 0
 
@@ -26,6 +28,9 @@ class تأكيد_الإغلاق(discord.ui.View):
             await interaction.response.send_message("❌ هذا التأكيد ليس لك!", ephemeral=True)
             return
         await interaction.response.send_message("🔒 جاري حذف التذكرة...")
+        async with aiosqlite.connect("ticket_data.db") as db:
+            await db.execute("DELETE FROM تذاكر WHERE channel_id = ?", (str(self.channel.id),))
+            await db.commit()
         await asyncio.sleep(1)
         await self.channel.delete()
     
@@ -48,6 +53,9 @@ class TicketControlView(discord.ui.View):
         if not await is_authorized(interaction.user):
             await interaction.response.send_message("❌ ليس لديك صلاحية لاستلام هذه التذكرة!", ephemeral=True)
             return
+        async with aiosqlite.connect("ticket_data.db") as db:
+            await db.execute("UPDATE تذاكر SET status = 'claimed', claimer_id = ? WHERE channel_id = ?", (str(interaction.user.id), str(interaction.channel.id)))
+            await db.commit()
         await interaction.response.send_message(f"✅ تم استلام التذكرة بواسطة {interaction.user.mention}")
     
     @discord.ui.button(label="🔒 إغلاق التذكرة", style=discord.ButtonStyle.danger)
@@ -84,13 +92,13 @@ class TicketButton(discord.ui.View):
             category = await interaction.guild.create_category("تذاكر")
         
         overwrites = {
-            interaction.guild.default_role: discord.PermissionOverwrite(read_messages=False),
+            interaction.guild.default_role: discord.PermissionOverwrite(read_messages=True, send_messages=True),
             interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True, attach_files=True, embed_links=True, add_reactions=True),
             interaction.guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
         }
         
         async with aiosqlite.connect("ticket_data.db") as db:
-            cursor = await db.execute("SELECT role_id FROM اعدادات_السيرفر WHERE guild_id = ?", (str(interaction.guild_id),))
+            cursor = await db.execute("SELECT رتبة_التذاكر FROM اعدادات_السيرفر WHERE guild_id = ?", (str(interaction.guild_id),))
             row = await cursor.fetchone()
             if row and row[0]:
                 role = interaction.guild.get_role(int(row[0]))
@@ -117,19 +125,3 @@ class TicketButton(discord.ui.View):
             await db.commit()
         
         await interaction.response.send_message(f"✅ تم فتح تذكرة: {channel.mention}", ephemeral=True)
-
-async def update_panel_message(guild_id, channel_id, embed_title, embed_description, embed_color):
-    async with aiosqlite.connect("ticket_data.db") as db:
-        cursor = await db.execute("SELECT message_id FROM بانل WHERE guild_id = ?", (str(guild_id),))
-        row = await cursor.fetchone()
-        if row:
-            message_id = row[0]
-            channel = البوت.get_channel(int(channel_id))
-            if channel:
-                try:
-                    msg = await channel.fetch_message(int(message_id))
-                    embed = discord.Embed(title=embed_title, description=embed_description, color=int(embed_color, 16))
-                    view = TicketButton(embed_title, embed_description, embed_color)
-                    await msg.edit(embed=embed, view=view)
-                except:
-                    pass
