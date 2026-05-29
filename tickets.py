@@ -52,7 +52,7 @@ class TicketControlView(discord.ui.View):
     
     @discord.ui.button(label="🔒 إغلاق التذكرة", style=discord.ButtonStyle.danger)
     async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not await is_authorized(interaction.user) and str(interaction.user.id) != self.creator_id:
+        if not await is_authorized(interaction.user):
             await interaction.response.send_message("❌ ليس لديك صلاحية لإغلاق هذه التذكرة!", ephemeral=True)
             return
         view = تأكيد_الإغلاق(interaction.channel, interaction.user)
@@ -64,30 +64,72 @@ class TicketControlView(discord.ui.View):
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 class TicketButton(discord.ui.View):
-    def __init__(self):
+    def __init__(self, embed_title, embed_description, embed_color):
         super().__init__(timeout=None)
+        self.embed_title = embed_title
+        self.embed_description = embed_description
+        self.embed_color = embed_color
     
     @discord.ui.button(label="🎫 فتح تذكرة", style=discord.ButtonStyle.primary)
     async def create(self, interaction: discord.Interaction, button: discord.ui.Button):
+        async with aiosqlite.connect("ticket_data.db") as db:
+            cursor = await db.execute("SELECT channel_id FROM تذاكر WHERE guild_id = ? AND creator_id = ? AND status = 'open'", (str(interaction.guild_id), str(interaction.user.id)))
+            existing = await cursor.fetchone()
+            if existing:
+                await interaction.response.send_message(f"❌ لديك تذكرة مفتوحة بالفعل! <#{existing[0]}>", ephemeral=True)
+                return
+        
         category = discord.utils.get(interaction.guild.categories, name="تذاكر")
         if not category:
             category = await interaction.guild.create_category("تذاكر")
         
+        overwrites = {
+            interaction.guild.default_role: discord.PermissionOverwrite(read_messages=False),
+            interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True, attach_files=True, embed_links=True, add_reactions=True),
+            interaction.guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
+        }
+        
+        async with aiosqlite.connect("ticket_data.db") as db:
+            cursor = await db.execute("SELECT role_id FROM اعدادات_السيرفر WHERE guild_id = ?", (str(interaction.guild_id),))
+            row = await cursor.fetchone()
+            if row and row[0]:
+                role = interaction.guild.get_role(int(row[0]))
+                if role:
+                    overwrites[role] = discord.PermissionOverwrite(read_messages=True, send_messages=True, attach_files=True, embed_links=True, add_reactions=True)
+        
         channel = await interaction.guild.create_text_channel(
             name=f"تذكرة-{interaction.user.name}",
             category=category,
-            overwrites={
-                interaction.guild.default_role: discord.PermissionOverwrite(read_messages=False),
-                interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
-                interaction.guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
-            }
+            overwrites=overwrites
         )
         
         embed = discord.Embed(
-            title="🎫 تذكرة جديدة",
-            description=f"مرحباً {interaction.user.mention}\n\nيرجى شرح مشكلتك بالتفصيل وسيقوم فريق الدعم بالرد عليك قريباً.",
-            color=0x00FF00
+            title=self.embed_title,
+            description=f"مرحباً {interaction.user.mention}\n\n{self.embed_description}",
+            color=int(self.embed_color, 16)
         )
         view = TicketControlView(str(interaction.user.id), interaction.user.display_name)
         await channel.send(embed=embed, view=view)
+        
+        async with aiosqlite.connect("ticket_data.db") as db:
+            await db.execute("INSERT INTO تذاكر (channel_id, guild_id, creator_id, creator_name, status, created_at) VALUES (?, ?, ?, ?, 'open', ?)",
+                            (str(channel.id), str(interaction.guild_id), str(interaction.user.id), interaction.user.display_name, int(time.time())))
+            await db.commit()
+        
         await interaction.response.send_message(f"✅ تم فتح تذكرة: {channel.mention}", ephemeral=True)
+
+async def update_panel_message(guild_id, channel_id, embed_title, embed_description, embed_color):
+    async with aiosqlite.connect("ticket_data.db") as db:
+        cursor = await db.execute("SELECT message_id FROM بانل WHERE guild_id = ?", (str(guild_id),))
+        row = await cursor.fetchone()
+        if row:
+            message_id = row[0]
+            channel = البوت.get_channel(int(channel_id))
+            if channel:
+                try:
+                    msg = await channel.fetch_message(int(message_id))
+                    embed = discord.Embed(title=embed_title, description=embed_description, color=int(embed_color, 16))
+                    view = TicketButton(embed_title, embed_description, embed_color)
+                    await msg.edit(embed=embed, view=view)
+                except:
+                    pass
