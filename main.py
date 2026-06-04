@@ -1,8 +1,9 @@
 # ==================== main.py ====================
 import sys
-import traceback
-import logging
 import os
+import logging
+import traceback
+import asyncio
 
 logging.basicConfig(
     level=logging.INFO,
@@ -41,23 +42,66 @@ except Exception as e:
     logger.error(f"❌ فشل في إنشاء البوت: {e}")
     sys.exit(1)
 
+# ==================== EmbedHelper ====================
+class EmbedHelper:
+    @staticmethod
+    def create(title=None, description=None, color=None, fields=None, footer_text=None, image_url=None, thumbnail_url=None, author_name=None, author_icon=None):
+        try:
+            if color is None: color = 0x3498db
+            if isinstance(color, str): color = int(color.replace("#", ""), 16)
+            embed = discord.Embed(title=title, description=description, color=color)
+            if image_url: embed.set_image(url=image_url)
+            if thumbnail_url: embed.set_thumbnail(url=thumbnail_url)
+            if author_name: embed.set_author(name=author_name, icon_url=author_icon)
+            if fields:
+                for f in fields:
+                    embed.add_field(name=f.get("name", ""), value=f.get("value", ""), inline=f.get("inline", True))
+            if footer_text: embed.set_footer(text=footer_text)
+            embed.timestamp = discord.utils.utcnow()
+            return embed
+        except Exception as e:
+            logger.error(f"❌ EmbedHelper.create: {e}")
+            return discord.Embed(description="حدث خطأ.", color=0xFF0000)
+
+    @staticmethod
+    async def send(target, title=None, description=None, color=None, fields=None, footer_text=None, image_url=None, thumbnail_url=None, author_name=None, author_icon=None, is_ephemeral=False, view=None):
+        try:
+            embed = EmbedHelper.create(title=title, description=description, color=color, fields=fields, footer_text=footer_text, image_url=image_url, thumbnail_url=thumbnail_url, author_name=author_name, author_icon=author_icon)
+            if hasattr(target, 'response'):
+                if target.response.is_done(): await target.followup.send(embed=embed, ephemeral=is_ephemeral, view=view)
+                else: await target.response.send_message(embed=embed, ephemeral=is_ephemeral, view=view)
+            else: await target.send(embed=embed, view=view)
+            return embed
+        except Exception as e:
+            logger.error(f"❌ EmbedHelper.send: {e}")
+            try:
+                fb = discord.Embed(description="حدث خطأ.", color=0xFF0000)
+                if hasattr(target, 'response'):
+                    if target.response.is_done(): await target.followup.send(embed=fb, ephemeral=True)
+                    else: await target.response.send_message(embed=fb, ephemeral=True)
+                else: await target.send(embed=fb)
+            except: pass
+            return None
+
+# ==================== تحميل الإضافات ====================
+async def load_extensions():
+    try:
+        await البوت.load_extension("management")
+        logger.info("✅ تم تحميل management")
+    except Exception as e:
+        logger.error(f"❌ فشل تحميل management: {e}")
+
 @bot.event
 async def on_ready():
+    logger.info(f"✅ تم تشغيل البوت: {bot.user}")
+    logger.info(f"📊 عدد السيرفرات: {len(bot.guilds)}")
+    await load_extensions()
     try:
-        logger.info(f"✅ تم تشغيل البوت: {bot.user}")
-        logger.info(f"📊 عدد السيرفرات: {len(bot.guilds)}")
-        
-        await bot.load_extension("cogs.management")
-        logger.info("✅ تم تحميل management cog")
-        
-        await bot.load_extension("cogs.games")
-        logger.info("✅ تم تحميل games cog")
-        
         synced = await bot.tree.sync()
         logger.info(f"📡 تم مزامنة {len(synced)} أمر")
-        logger.info("✅ البوت جاهز للعمل!")
     except Exception as e:
-        logger.error(f"❌ خطأ في on_ready: {e}")
+        logger.error(f"❌ خطأ في المزامنة: {e}")
+    logger.info("✅ البوت جاهز للعمل!")
 
 async def main():
     try:
@@ -77,7 +121,6 @@ async def main():
 
 if __name__ == "__main__":
     try:
-        import asyncio
         asyncio.run(main())
     except KeyboardInterrupt:
         logger.info("⏹️ تم إيقاف البوت يدوياً")
