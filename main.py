@@ -79,12 +79,9 @@ class EmbedHelper:
         try:
             embed = EmbedHelper.create(title=title, description=description, color=color, fields=fields, footer_text=footer_text, image_url=image_url, thumbnail_url=thumbnail_url, author_name=author_name, author_icon=author_icon)
             if hasattr(target, 'response'):
-                if target.response.is_done():
-                    await target.followup.send(embed=embed, ephemeral=is_ephemeral, view=view)
-                else:
-                    await target.response.send_message(embed=embed, ephemeral=is_ephemeral, view=view)
-            else:
-                await target.send(embed=embed, view=view)
+                if target.response.is_done(): await target.followup.send(embed=embed, ephemeral=is_ephemeral, view=view)
+                else: await target.response.send_message(embed=embed, ephemeral=is_ephemeral, view=view)
+            else: await target.send(embed=embed, view=view)
             return embed
         except Exception as e:
             logger.error(f"❌ EmbedHelper.send: {e}")
