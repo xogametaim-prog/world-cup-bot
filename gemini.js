@@ -1,48 +1,81 @@
-// ==================== gemini.js ====================
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 const genAI = new GoogleGenerativeAI(process.env.AI_KEY);
-const aiModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-const userChats = new Map();
+const model = genAI.getGenerativeModel({
+    model: "gemini-1.5-flash"
+});
 
-async function getAIResponseWithMemory(userId, userMessage) {
+// ذاكرة مؤقتة داخل الرام
+const memory = new Map();
+
+// عدد الرسائل المحفوظة لكل مستخدم
+const MAX_HISTORY = 12;
+
+async function generateAIResponse(userId, userMessage) {
     try {
-        if (!userChats.has(userId)) {
-            userChats.set(userId, []);
+        if (!process.env.AI_KEY) {
+            throw new Error("AI_KEY is missing");
         }
 
-        let history = userChats.get(userId);
-        let promptContext = "أنت بوت ذكي في سيرفر ديسكورد. هذه هي المحادثة السابقة مع العضو:\n";
-        
-        history.forEach(chat => {
-            promptContext += `${chat.role}: ${chat.text}\n`;
+        // إنشاء سجل للمستخدم إذا لم يكن موجوداً
+        if (!memory.has(userId)) {
+            memory.set(userId, []);
+        }
+
+        const history = memory.get(userId);
+
+        // بناء السياق
+        let context = "";
+
+        if (history.length > 0) {
+            context =
+                "هذه هي المحادثة السابقة بين المستخدم والمساعد:\n\n";
+
+            for (const msg of history) {
+                context += `${msg.role}: ${msg.content}\n`;
+            }
+
+            context += "\n";
+        }
+
+        context += `user: ${userMessage}\nassistant:`;
+
+        // إرسال الطلب إلى Gemini
+        const result = await model.generateContent(context);
+
+        const response =
+            result.response.text()?.trim() ||
+            "لم أتمكن من إنشاء رد حالياً.";
+
+        // حفظ رسالة المستخدم
+        history.push({
+            role: "user",
+            content: userMessage
         });
-        
-        promptContext += `المستخدم: ${userMessage}\nالبوت:`;
 
-        const result = await aiModel.generateContent(promptContext);
-        const responseText = result.response.text();
+        // حفظ رد البوت
+        history.push({
+            role: "assistant",
+            content: response
+        });
 
-        history.push({ role: "المستخدم", text: userMessage });
-        history.push({ role: "البوت", text: responseText });
-
-        if (history.length > 12) {
-            history = history.slice(-12);
+        // الاحتفاظ بآخر 12 رسالة فقط
+        if (history.length > MAX_HISTORY) {
+            history.splice(0, history.length - MAX_HISTORY);
         }
-        userChats.set(userId, history);
 
-        return responseText;
+        memory.set(userId, history);
+
+        return response;
 
     } catch (error) {
-        console.error("خطأ الذكاء الاصطناعي:", error);
-        try {
-            const fallback = await aiModel.generateContent(userMessage);
-            return fallback.response.text();
-        } catch (err) {
-            return "⚠️ حصلت مشكلة في الاتصال، تأكد من صحة المفتاح في Render تحت اسم الاختصار الجديد AI_KEY !";
-        }
+        console.error("Gemini Error:", error);
+
+        return "⚠️ حصلت مشكلة في الاتصال بالذكاء الاصطناعي، تأكد من صحة الـ AI_KEY داخل Render يا غالي!";
     }
 }
 
-module.exports = { getAIResponseWithMemory };
+module.exports = {
+    generateAIResponse
+};
