@@ -9,6 +9,6 @@
   "dependencies": {
     "discord.js": "^14.14.1",
     "express": "^4.19.2",
-    "sqlite3": "^5.1.7"
+    "better-sqlite3": "^11.7.0"
   }
 }
