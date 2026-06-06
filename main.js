@@ -3,6 +3,7 @@ const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuild
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const express = require('express');
 
+// ==================== Express Web Server ====================
 const app = express();
 const PORT = process.env.PORT || 8080;
 
@@ -14,6 +15,7 @@ app.listen(PORT, () => {
   console.log(`🌐 Web server running on port ${PORT}`);
 });
 
+// ==================== Discord Client ====================
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -26,44 +28,66 @@ const client = new Client({
 
 // ==================== Gemini AI Setup ====================
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
-const aiModel = genAI ? genAI.getGenerativeModel({ model: 'gemini-1.5-flash' }) : null;
+let aiModel = null;
+
+if (GEMINI_API_KEY) {
+  try {
+    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+    aiModel = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    console.log('✅ Gemini AI initialized successfully');
+  } catch (error) {
+    console.error('❌ Failed to initialize Gemini AI:', error.message);
+  }
+} else {
+  console.warn('⚠️ GEMINI_API_KEY not found. AI features disabled.');
+}
 
 const aiChatHistory = new Map();
 
 async function getAIResponse(userMessage, userId, userName) {
   if (!aiModel) return null;
+  
   try {
     if (!aiChatHistory.has(userId)) {
       aiChatHistory.set(userId, []);
     }
+    
     const history = aiChatHistory.get(userId);
-    history.push({ role: 'user', parts: [{ text: `[${userName}]: ${userMessage}` }] });
-    if (history.length > 20) history.shift();
-
+    
     const chat = aiModel.startChat({
-      history: history.slice(0, -1),
-      generationConfig: { maxOutputTokens: 500, temperature: 0.8 }
+      history: history.slice(-10),
+      generationConfig: {
+        maxOutputTokens: 500,
+        temperature: 0.8
+      }
     });
 
     const result = await chat.sendMessage(userMessage);
     const response = result.response.text();
+    
+    history.push({ role: 'user', parts: [{ text: userMessage }] });
     history.push({ role: 'model', parts: [{ text: response }] });
+    
+    if (history.length > 20) {
+      history.splice(0, 2);
+    }
+    
     aiChatHistory.set(userId, history);
     return response;
   } catch (error) {
-    console.error('❌ Gemini API Error:', error);
+    console.error('❌ Gemini API Error:', error.message);
     return null;
   }
 }
 
 // ==================== Giveaway System ====================
-const giveawayTimers = new Map();
+const activeGiveaways = new Map();
 
 async function endGiveaway(guildId, channelId, messageId, prize, language, emoji) {
   try {
     const guild = client.guilds.cache.get(guildId);
     if (!guild) return;
+    
     const channel = guild.channels.cache.get(channelId);
     if (!channel) return;
 
@@ -71,7 +95,8 @@ async function endGiveaway(guildId, channelId, messageId, prize, language, emoji
     try {
       msg = await channel.messages.fetch(messageId);
     } catch (e) {
-      console.error('Failed to fetch giveaway message:', e);
+      console.error('❌ Failed to fetch giveaway message:', e.message);
+      activeGiveaways.delete(`${guildId}-${messageId}`);
       return;
     }
 
@@ -80,9 +105,10 @@ async function endGiveaway(guildId, channelId, messageId, prize, language, emoji
       const embed = new EmbedBuilder()
         .setTitle(language === 'en' ? '🎉 Giveaway Ended' : '🎉 انتهى السحب')
         .setDescription(language === 'en' ? `No reactions found for: **${prize}**` : `لم يتم العثور على تفاعلات لـ: **${prize}**`)
-        .setColor(0xFF0000);
+        .setColor(0xFF0000)
+        .setTimestamp();
       await msg.reply({ embeds: [embed] });
-      giveawayTimers.delete(`${guildId}-${messageId}`);
+      activeGiveaways.delete(`${guildId}-${messageId}`);
       return;
     }
 
@@ -93,9 +119,10 @@ async function endGiveaway(guildId, channelId, messageId, prize, language, emoji
       const embed = new EmbedBuilder()
         .setTitle(language === 'en' ? '🎉 Giveaway Ended' : '🎉 انتهى السحب')
         .setDescription(language === 'en' ? `No participants for: **${prize}**` : `لا يوجد مشاركين في: **${prize}**`)
-        .setColor(0xFF0000);
+        .setColor(0xFF0000)
+        .setTimestamp();
       await msg.reply({ embeds: [embed] });
-      giveawayTimers.delete(`${guildId}-${messageId}`);
+      activeGiveaways.delete(`${guildId}-${messageId}`);
       return;
     }
 
@@ -118,85 +145,126 @@ async function endGiveaway(guildId, channelId, messageId, prize, language, emoji
       .setTimestamp();
 
     await msg.reply({ embeds: [embed] });
-    giveawayTimers.delete(`${guildId}-${messageId}`);
+    activeGiveaways.delete(`${guildId}-${messageId}`);
+    console.log(`✅ Giveaway ended: ${prize} - Winner: ${winner.username}`);
   } catch (error) {
-    console.error('❌ endGiveaway:', error);
+    console.error('❌ endGiveaway:', error.message);
   }
 }
 
 // ==================== Guess Game System ====================
 const activeGames = new Map();
+
 const fakePlayers = [
-  { name: 'Gamer_Bot', id: 'fake_1' },
-  { name: 'AI_Player', id: 'fake_2' },
-  { name: 'Lucky_Bot', id: 'fake_3' }
+  { name: '🎮 Gamer_Bot', guesses: [] },
+  { name: '🤖 AI_Player', guesses: [] },
+  { name: '🍀 Lucky_Bot', guesses: [] }
 ];
+
+function getSmartGuess(secretNumber, previousGuesses, min, max) {
+  const availableNumbers = [];
+  for (let i = min; i <= max; i++) {
+    if (!previousGuesses.includes(i)) {
+      availableNumbers.push(i);
+    }
+  }
+  if (availableNumbers.length === 0) return Math.floor(Math.random() * (max - min + 1)) + min;
+  return availableNumbers[Math.floor(Math.random() * availableNumbers.length)];
+}
 
 async function startGuessGame(channel, language) {
   const secretNumber = Math.floor(Math.random() * 100) + 1;
+  const allGuesses = [];
+  
   const gameData = {
     secretNumber,
     language,
     channel,
     participants: new Set(),
     fakeIntervals: [],
-    ended: false
+    ended: false,
+    allGuesses
   };
 
   activeGames.set(channel.id, gameData);
 
   const title = language === 'en' ? '🎯 Guess the Number!' : '🎯 خمن الرقم!';
   const desc = language === 'en'
-    ? `I picked a number between **1 and 100**!\nType your guesses in chat.\nYou have **60 seconds**!`
-    : `اخترت رقم بين **1 و 100**!\nاكتب تخمينك في الشات.\nأمامك **60 ثانية**!`;
+    ? `I picked a number between **1 and 100**!\nType your guesses in chat.\nYou have **60 seconds**!\n\n🤖 Fake players will also join the game!`
+    : `اخترت رقم بين **1 و 100**!\nاكتب تخمينك في الشات.\nأمامك **60 ثانية**!\n\n🤖 لاعبين وهميين راح ينافسوكم كمان!`;
 
   const embed = new EmbedBuilder()
     .setTitle(title)
     .setDescription(desc)
     .setColor(0x00FF00)
-    .setFooter({ text: language === 'en' ? 'Good luck!' : 'بالتوفيق!' });
+    .setFooter({ text: language === 'en' ? 'Good luck! 🍀' : 'بالتوفيق! 🍀' })
+    .setTimestamp();
 
   await channel.send({ embeds: [embed] });
 
-  fakePlayers.forEach(player => {
+  // Reset fake players
+  fakePlayers.forEach(p => p.guesses = []);
+
+  // Launch fake players
+  fakePlayers.forEach((player, index) => {
     const interval = setInterval(() => {
       if (gameData.ended) {
         clearInterval(interval);
         return;
       }
-      const fakeGuess = Math.floor(Math.random() * 100) + 1;
-      channel.send(`🤖 **${player.name}**: ${language === 'en' ? 'I guess' : 'أخمن'} **${fakeGuess}**!`);
+      
+      const min = 1;
+      const max = 100;
+      const fakeGuess = getSmartGuess(secretNumber, gameData.allGuesses, min, max);
+      player.guesses.push(fakeGuess);
+      gameData.allGuesses.push(fakeGuess);
+      
+      const messages = language === 'en' 
+        ? [`I think it's **${fakeGuess}**! 🤔`, `Hmm... **${fakeGuess}**? 🧐`, `Let me try **${fakeGuess}**! 🎯`]
+        : [`أتوقع **${fakeGuess}**! 🤔`, `يمكن **${fakeGuess}**؟ 🧐`, `خليني أجرب **${fakeGuess}**! 🎯`];
+      
+      const msg = messages[Math.floor(Math.random() * messages.length)];
+      channel.send(`${player.name}: ${msg}`);
+      
       if (fakeGuess === secretNumber) {
         gameData.ended = true;
         activeGames.delete(channel.id);
         gameData.fakeIntervals.forEach(i => clearInterval(i));
+        
         const winTitle = language === 'en' ? '🤖 AI Wins!' : '🤖 الذكاء الاصطناعي يفوز!';
         const winDesc = language === 'en'
-          ? `**${player.name}** guessed the number **${secretNumber}** correctly!\nBetter luck next time humans!`
-          : `**${player.name}** خمن الرقم **${secretNumber}** بشكل صحيح!\nحظ أوفر للبشر المرة القادمة!`;
+          ? `**${player.name}** guessed the number **${secretNumber}** correctly!\nBetter luck next time humans! 😄`
+          : `**${player.name}** خمن الرقم **${secretNumber}** بشكل صحيح!\nحظ أوفر للبشر المرة القادمة! 😄`;
+        
         const winEmbed = new EmbedBuilder()
           .setTitle(winTitle)
           .setDescription(winDesc)
-          .setColor(0xFF0000);
+          .setColor(0xFF0000)
+          .setTimestamp();
         channel.send({ embeds: [winEmbed] });
       }
-    }, 10000);
+    }, 8000 + (index * 2000));
+    
     gameData.fakeIntervals.push(interval);
   });
 
+  // Game timeout
   setTimeout(() => {
     if (!gameData.ended) {
       gameData.ended = true;
       gameData.fakeIntervals.forEach(i => clearInterval(i));
       activeGames.delete(channel.id);
+      
       const endTitle = language === 'en' ? '⏰ Time\'s Up!' : '⏰ انتهى الوقت!';
       const endDesc = language === 'en'
         ? `No one guessed the number **${secretNumber}**!\nBetter luck next time!`
         : `لم يخمن أحد الرقم **${secretNumber}**!\nحظ أوفر المرة القادمة!`;
+      
       const endEmbed = new EmbedBuilder()
         .setTitle(endTitle)
         .setDescription(endDesc)
-        .setColor(0xFFA500);
+        .setColor(0xFFA500)
+        .setTimestamp();
       channel.send({ embeds: [endEmbed] });
     }
   }, 60000);
@@ -226,6 +294,7 @@ const commands = [
       option.setName('emoji')
         .setDescription('إيموجي التفاعل | Emoji (default 🎉)'))
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+  
   new SlashCommandBuilder()
     .setName('guess_game')
     .setDescription('لعبة تخمين الرقم | Guess the Number Game')
@@ -236,6 +305,7 @@ const commands = [
           { name: 'العربية', value: 'ar' },
           { name: 'English', value: 'en' }
         )),
+  
   new SlashCommandBuilder()
     .setName('help')
     .setDescription('المساعدة | Help')
@@ -244,56 +314,70 @@ const commands = [
 // ==================== Events ====================
 client.once('ready', async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
+  console.log(`📊 Serving ${client.guilds.cache.size} servers`);
 
   const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
   try {
     await rest.put(Routes.applicationCommands(client.user.id), { body: commands.map(c => c.toJSON()) });
-    console.log('📡 Slash commands registered');
+    console.log('📡 Slash commands registered successfully');
   } catch (error) {
-    console.error('❌ Command registration:', error);
+    console.error('❌ Command registration failed:', error.message);
   }
 
-  console.log('✅ Bot is ready!');
+  console.log('✅ Bot is fully ready!');
 });
 
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
   if (!message.guild) return;
 
+  // Guess game listener
   const game = activeGames.get(message.channel.id);
   if (game && !game.ended) {
     const guess = parseInt(message.content.trim());
     if (!isNaN(guess) && guess >= 1 && guess <= 100) {
       game.participants.add(message.author.id);
+      
+      if (!game.allGuesses.includes(guess)) {
+        game.allGuesses.push(guess);
+      }
+      
       if (guess === game.secretNumber) {
         game.ended = true;
         game.fakeIntervals.forEach(i => clearInterval(i));
         activeGames.delete(message.channel.id);
+        
         const title = game.language === 'en' ? '🎉 Winner!' : '🎉 فائز!';
         const desc = game.language === 'en'
-          ? `**${message.author}** guessed the number **${game.secretNumber}** correctly!\nCongratulations!`
-          : `**${message.author}** خمن الرقم **${game.secretNumber}** بشكل صحيح!\nمبروك!`;
+          ? `**${message.author}** guessed the number **${game.secretNumber}** correctly!\nCongratulations! 🏆`
+          : `**${message.author}** خمن الرقم **${game.secretNumber}** بشكل صحيح!\nمبروك! 🏆`;
+        
         const embed = new EmbedBuilder()
           .setTitle(title)
           .setDescription(desc)
-          .setColor(0xFFD700);
+          .setColor(0xFFD700)
+          .setTimestamp();
         await message.channel.send({ embeds: [embed] });
       }
     }
     return;
   }
 
+  // AI Chat
   const isMentioned = message.mentions.has(client.user);
   const isAiChannel = message.channel.name === 'ai-chat';
 
   if (isMentioned || isAiChannel) {
     if (!aiModel) {
-      await message.reply('❌ AI is not configured. Please set GEMINI_API_KEY.');
+      await message.reply('❌ AI is not configured. Please set GEMINI_API_KEY in environment variables.');
       return;
     }
 
     await message.channel.sendTyping();
-    const aiResponse = await getAIResponse(message.content, message.author.id, message.author.displayName);
+    
+    const cleanMessage = message.content.replace(`<@${client.user.id}>`, '').trim();
+    const aiResponse = await getAIResponse(cleanMessage || 'Hello', message.author.id, message.author.displayName);
+    
     if (aiResponse) {
       const chunks = aiResponse.match(/[\s\S]{1,2000}/g) || [];
       for (const chunk of chunks) {
@@ -338,12 +422,15 @@ client.on('interactionCreate', async (interaction) => {
       const msg = await interaction.fetchReply();
       await msg.react(emoji);
 
+      const key = `${interaction.guildId}-${msg.id}`;
       const timer = setTimeout(() => {
         endGiveaway(interaction.guildId, interaction.channelId, msg.id, prize, language, emoji);
       }, duration * 60 * 1000);
-      giveawayTimers.set(`${interaction.guildId}-${msg.id}`, timer);
+      
+      activeGiveaways.set(key, timer);
+      console.log(`✅ Giveaway started: ${prize} - Ends in ${duration} minutes`);
     } catch (error) {
-      console.error('❌ giveaway:', error);
+      console.error('❌ giveaway:', error.message);
       await interaction.editReply({ embeds: [new EmbedBuilder().setDescription('❌ Internal error!').setColor(0xFF0000)] });
     }
   }
@@ -358,7 +445,7 @@ client.on('interactionCreate', async (interaction) => {
       return;
     }
 
-    const confirmMsg = language === 'en' ? '🎯 Starting Guess the Number game!' : '🎯 بدء لعبة تخمين الرقم!';
+    const confirmMsg = language === 'en' ? '🎯 Starting Guess the Number game! Good luck! 🍀' : '🎯 بدء لعبة تخمين الرقم! بالتوفيق! 🍀';
     await interaction.reply({ content: confirmMsg });
     await startGuessGame(channel, language);
   }
@@ -370,19 +457,34 @@ client.on('interactionCreate', async (interaction) => {
       .setColor(0x3498db)
       .addFields(
         { name: '🤖 AI Chat', value: 'منشن البوت أو اكتب في روم `ai-chat`', inline: false },
-        { name: '🎉 سحب', value: '`/giveaway` - إنشاء قيف أوي', inline: false },
-        { name: '🎯 لعبة', value: '`/guess_game` - لعبة تخمين الرقم', inline: false }
+        { name: '🎉 سحب | Giveaway', value: '`/giveaway` - إنشاء قيف أوي', inline: false },
+        { name: '🎯 لعبة | Game', value: '`/guess_game` - لعبة تخمين الرقم', inline: false }
       )
-      .setFooter({ text: 'Bot • شغال 24 ساعة' })
+      .setFooter({ text: 'Bot • شغال 24 ساعة | Online 24/7' })
       .setTimestamp();
     await interaction.reply({ embeds: [embed], ephemeral: true });
   }
 });
 
+// ==================== Error Handling ====================
+client.on('error', (error) => {
+  console.error('❌ Client error:', error.message);
+});
+
+process.on('unhandledRejection', (error) => {
+  console.error('❌ Unhandled promise rejection:', error.message);
+});
+
+// ==================== Login ====================
 const TOKEN = process.env.DISCORD_TOKEN;
 if (!TOKEN) {
-  console.error('❌ DISCORD_TOKEN not found');
+  console.error('❌ DISCORD_TOKEN not found in environment variables');
   process.exit(1);
 }
 
-client.login(TOKEN);
+client.login(TOKEN).then(() => {
+  console.log('🚀 Bot is connecting to Discord...');
+}).catch((error) => {
+  console.error('❌ Failed to login:', error.message);
+  process.exit(1);
+});
