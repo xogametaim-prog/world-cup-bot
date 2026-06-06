@@ -1,5 +1,7 @@
 // ==================== gemini.js ====================
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const fs = require('fs');
+const path = require('path');
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
@@ -10,33 +12,81 @@ if (!GEMINI_API_KEY) {
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 const aiModel = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
-const chatSessions = new Map();
+const memoryPath = path.join(__dirname, 'memory.json');
 
-async function getAIResponse(userMessage, userId) {
+// دالة لقراءة الذاكرة من الملف
+function loadMemory() {
   try {
-    if (!chatSessions.has(userId)) {
-      const chat = aiModel.startChat({
-        generationConfig: {
-          maxOutputTokens: 500,
-          temperature: 0.8
-        }
-      });
-      chatSessions.set(userId, chat);
+    if (fs.existsSync(memoryPath)) {
+      return JSON.parse(fs.readFileSync(memoryPath, 'utf8'));
     }
+  } catch (e) {
+    console.error('Error reading memory file:', e);
+  }
+  return {};
+}
 
-    const chat = chatSessions.get(userId);
-    const result = await chat.sendMessage(userMessage);
-    const response = result.response.text();
-    
-    return response;
-  } catch (error) {
-    console.error('❌ Gemini API Error:', error.message);
-    return null;
+// دالة لحفظ الذاكرة في الملف
+function saveMemory(memory) {
+  try {
+    fs.writeFileSync(memoryPath, JSON.stringify(memory, null, 2), 'utf8');
+  } catch (e) {
+    console.error('Error writing to memory file:', e);
   }
 }
 
-function clearChatHistory(userId) {
-  chatSessions.delete(userId);
+async function getAIResponseWithMemory(userId, userMessage) {
+  let memory = loadMemory();
+
+  // إذا كان المستخدم جديداً، ننشئ له سياقاً فارغاً
+  if (!memory[userId]) {
+    memory[userId] = [];
+  }
+
+  // إضافة رسالة المستخدم الحالية للذاكرة الخاصة به
+  memory[userId].push({ role: 'user', parts: [{ text: userMessage }] });
+
+  // نحفظ آخر 10 رسائل فقط لكل شخص
+  if (memory[userId].length > 10) {
+    memory[userId] = memory[userId].slice(-10);
+  }
+
+  try {
+    const chat = aiModel.startChat({
+      history: memory[userId].slice(0, -1),
+      generationConfig: {
+        maxOutputTokens: 500,
+        temperature: 0.8
+      }
+    });
+
+    const result = await chat.sendMessage(userMessage);
+    const responseText = result.response.text();
+
+    // إضافة رد البوت إلى ذاكرة هذا المستخدم
+    memory[userId].push({ role: 'model', parts: [{ text: responseText }] });
+    saveMemory(memory);
+
+    return responseText;
+  } catch (error) {
+    console.error(`Gemini Error for user ${userId}:`, error);
+    // نمسح ذاكرة الشخص هذا إذا صار خطأ
+    delete memory[userId];
+    saveMemory(memory);
+
+    try {
+      const fallbackResult = await aiModel.generateContent(userMessage);
+      return fallbackResult.response.text();
+    } catch (err) {
+      return null;
+    }
+  }
 }
 
-module.exports = { getAIResponse, clearChatHistory };
+function clearUserMemory(userId) {
+  const memory = loadMemory();
+  delete memory[userId];
+  saveMemory(memory);
+}
+
+module.exports = { getAIResponseWithMemory, clearUserMemory };
