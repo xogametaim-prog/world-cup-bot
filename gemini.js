@@ -1,7 +1,7 @@
 // ==================== gemini.js ====================
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const genAI = new GoogleGenerativeAI(process.env.AI_KEY);
 const aiModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
 const userChats = new Map();
@@ -13,7 +13,7 @@ async function getAIResponseWithMemory(userId, userMessage) {
         }
 
         let history = userChats.get(userId);
-        let promptContext = "أنت بوت ذكي ومساعد في سيرفر ديسكورد. هذه هي المحادثة السابقة مع هذا العضو للتذكر:\n";
+        let promptContext = "أنت بوت ذكي في سيرفر ديسكورد. هذه هي المحادثة السابقة مع العضو:\n";
         
         history.forEach(chat => {
             promptContext += `${chat.role}: ${chat.text}\n`;
@@ -33,13 +33,14 @@ async function getAIResponseWithMemory(userId, userMessage) {
         userChats.set(userId, history);
 
         return responseText;
+
     } catch (error) {
-        console.error("خطأ في جلب الرد من جوجل:", error);
+        console.error("خطأ الذكاء الاصطناعي:", error);
         try {
             const fallback = await aiModel.generateContent(userMessage);
             return fallback.response.text();
         } catch (err) {
-            return "⚠️ حصلت مشكلة في الاتصال بالذكاء الاصطناعي، تأكد من صحة الـ API Key داخل Render يا غالي!";
+            return "⚠️ حصلت مشكلة في الاتصال، تأكد من صحة المفتاح في Render تحت اسم الاختصار الجديد AI_KEY !";
         }
     }
 }
