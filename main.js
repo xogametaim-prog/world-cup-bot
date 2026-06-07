@@ -1,68 +1,83 @@
 const express = require("express");
 const {
-Client,
-GatewayIntentBits,
-Events
+    Client,
+    GatewayIntentBits,
+    Events
 } = require("discord.js");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.get("/", (req, res) => {
-res.send("World Cup 2026 Bot Online");
+    res.send("World Cup 2026 Bot Online");
 });
 
 app.listen(PORT, () => {
-console.log("Web server running on port ${PORT}");
+    console.log(`Web server running on port ${PORT}`);
 });
 
 const client = new Client({
-intents: [
-GatewayIntentBits.Guilds
-]
+    intents: [
+        GatewayIntentBits.Guilds
+    ]
 });
 
 client.once(Events.ClientReady, (readyClient) => {
-console.log("Logged in as ${readyClient.user.tag}");
+    console.log(`Logged in as ${readyClient.user.tag}`);
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
-if (!interaction.isChatInputCommand()) return;
+    if (!interaction.isChatInputCommand()) return;
 
-if (interaction.commandName === "worldcup") {
-    await interaction.reply("🏆 World Cup 2026 Bot is ready!");
-}
+    switch (interaction.commandName) {
+        case "worldcup":
+            await interaction.reply(
+                "🏆 كأس العالم 2026 سيقام في الولايات المتحدة وكندا والمكسيك."
+            );
+            break;
 
-if (interaction.commandName === "teams") {
-    await interaction.reply(
-        "🌍 قائمة المنتخبات ستتم إضافتها لاحقاً."
-    );
-}
+        case "teams":
+            await interaction.reply(
+                "🌍 سيتم جلب قائمة المنتخبات من API-Football."
+            );
+            break;
 
-if (interaction.commandName === "pick_team") {
-    await interaction.reply(
-        "⚽ نظام اختيار المنتخب سيتم ربطه بقاعدة البيانات."
-    );
-}
+        case "schedule":
+            await interaction.reply(
+                "📅 سيتم عرض جدول المباريات من API-Football."
+            );
+            break;
 
-if (interaction.commandName === "my_team") {
-    await interaction.reply(
-        "📋 سيتم عرض منتخبك المختار هنا."
-    );
-}
+        case "stadiums":
+            await interaction.reply(
+                "🏟️ سيتم عرض الملاعب المستضيفة."
+            );
+            break;
 
-if (interaction.commandName === "leaderboard") {
-    await interaction.reply(
-        "🏅 لوحة المتصدرين قيد التطوير."
-    );
-}
+        case "pick_team":
+            await interaction.reply(
+                "⚽ نظام اختيار المنتخب سيتم تفعيله قريبًا."
+            );
+            break;
 
-if (interaction.commandName === "guess_team") {
-    await interaction.reply(
-        "❓ لعبة خمن المنتخب قيد التطوير."
-    );
-}
+        case "my_team":
+            await interaction.reply(
+                "📋 سيتم عرض منتخبك المختار."
+            );
+            break;
 
+        case "guess_team":
+            await interaction.reply(
+                "🎮 لعبة خمن المنتخب."
+            );
+            break;
+
+        case "leaderboard":
+            await interaction.reply(
+                "🏅 لوحة المتصدرين."
+            );
+            break;
+    }
 });
 
 client.login(process.env.DISCORD_TOKEN);
