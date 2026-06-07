@@ -1,6 +1,7 @@
 const { REST, Routes, SlashCommandBuilder } = require("discord.js");
 
 const commands = [
+
 new SlashCommandBuilder()
 .setName("worldcup")
 .setDescription("معلومات كأس العالم 2026"),
@@ -15,7 +16,7 @@ new SlashCommandBuilder()
 
 new SlashCommandBuilder()
 .setName("stadiums")
-.setDescription("عرض ملاعب البطولة"),
+.setDescription("عرض الملاعب المستضيفة"),
 
 new SlashCommandBuilder()
 .setName("pick_team")
@@ -31,18 +32,52 @@ new SlashCommandBuilder()
 
 new SlashCommandBuilder()
 .setName("leaderboard")
-.setDescription("عرض ترتيب اللاعبين")
+.setDescription("ترتيب اللاعبين"),
+
+new SlashCommandBuilder()
+.setName("matches_today")
+.setDescription("مباريات اليوم"),
+
+new SlashCommandBuilder()
+.setName("top_scorers")
+.setDescription("هدافي البطولة"),
+
+new SlashCommandBuilder()
+.setName("group_table")
+.setDescription("ترتيب المجموعات"),
+
+new SlashCommandBuilder()
+.setName("team_info")
+.setDescription("معلومات منتخب"),
+
+new SlashCommandBuilder()
+.setName("predict_winner")
+.setDescription("توقع بطل كأس العالم"),
+
+new SlashCommandBuilder()
+.setName("my_prediction")
+.setDescription("عرض توقعك للبطل"),
+
+new SlashCommandBuilder()
+.setName("quiz")
+.setDescription("سؤال عشوائي عن كأس العالم"),
+
+new SlashCommandBuilder()
+.setName("facts")
+.setDescription("معلومة عشوائية عن كأس العالم")
+
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
 
 (async () => {
 try {
+
 console.log("Started refreshing application commands.");
 
 await rest.put(
-  Routes.applicationCommands(process.env.CLIENT_ID),
-  { body: commands }
+Routes.applicationCommands(process.env.CLIENT_ID),
+{ body: commands }
 );
 
 console.log("Successfully reloaded application commands.");
