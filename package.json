@@ -1,18 +1,17 @@
 {
-  "name": "discord-gemini-bot",
-  "version": "1.0.0",
-  "description": "Discord AI Bot using Discord.js v14 and Gemini",
-  "main": "main.js",
-  "type": "commonjs",
-  "scripts": {
-    "start": "node main.js"
-  },
-  "dependencies": {
-    "@google/generative-ai": "^0.24.1",
-    "discord.js": "^14.21.0",
-    "express": "^5.1.0"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  }
+"name": "world-cup-2026-bot",
+"version": "1.0.0",
+"description": "World Cup 2026 Discord Bot",
+"main": "main.js",
+"scripts": {
+"start": "node main.js",
+"deploy": "node slashCommands.js"
+},
+"dependencies": {
+"discord.js": "^14.21.0",
+"express": "^5.1.0"
+},
+"engines": {
+"node": "20.x"
+}
 }
