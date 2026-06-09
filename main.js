@@ -1,4 +1,4 @@
-require("dotenv").config();
+// ================= IMPORTS =================
 
 const express = require("express");
 const sqlite3 = require("sqlite3").verbose();
@@ -7,16 +7,12 @@ const {
 Client,
 GatewayIntentBits,
 Events,
-REST,
-Routes,
-SlashCommandBuilder,
 ActionRowBuilder,
 StringSelectMenuBuilder,
-PermissionFlagsBits,
 EmbedBuilder
 } = require("discord.js");
 
-// ================= EXPRESS =================
+// ================= WEB SERVER =================
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -29,51 +25,15 @@ app.listen(PORT, () => {
 console.log("Web server running on port ${PORT}");
 });
 
-// ================= SQLITE =================
+// ================= DATABASE =================
 
 const db = new sqlite3.Database("./worldcup.db");
 
-db.serialize(() => {
+db.run("CREATE TABLE IF NOT EXISTS users ( userId TEXT PRIMARY KEY, team TEXT NOT NULL )");
 
-db.run("CREATE TABLE IF NOT EXISTS users ( userId TEXT PRIMARY KEY, team TEXT )");
-
-db.run("CREATE TABLE IF NOT EXISTS guilds ( guildId TEXT PRIMARY KEY, language TEXT DEFAULT 'ar' )");
+db.run("CREATE TABLE IF NOT EXISTS guilds ( guildId TEXT PRIMARY KEY, language TEXT NOT NULL )");
 
 db.run("CREATE TABLE IF NOT EXISTS leaderboard ( userId TEXT PRIMARY KEY, points INTEGER DEFAULT 0 )");
-
-});
-
-// ================= LANGUAGES =================
-
-const texts = {
-
-ar: {
-help: "📚 قائمة الأوامر",
-pick: "⚽ اختر منتخبك",
-alreadyPicked: "❌ اخترت منتخباً بالفعل",
-noTeam: "❌ لم تختر منتخباً بعد",
-myTeam: "🏆 منتخبك:",
-saved: "✅ تم حفظ اختيارك",
-languageSaved: "✅ تم تغيير اللغة للعربية",
-broadcastDone: "✅ تم إرسال الرسائل",
-guess: "🎮 لعبة التخمين",
-leaderboard: "🏅 المتصدرون"
-},
-
-en: {
-help: "📚 Commands List",
-pick: "⚽ Choose your team",
-alreadyPicked: "❌ You already selected a team",
-noTeam: "❌ No team selected",
-myTeam: "🏆 Your team:",
-saved: "✅ Team saved",
-languageSaved: "✅ Language changed to English",
-broadcastDone: "✅ Broadcast sent",
-guess: "🎮 Guess The Team",
-leaderboard: "🏅 Leaderboard"
-}
-
-};
 
 // ================= TEAMS =================
 
@@ -100,111 +60,74 @@ const teams = [
 "Saudi Arabia"
 ];
 
-// ================= DISCORD CLIENT =================
+// ================= FLAGS GAME =================
+
+const guessTeams = [
+{ name: "Argentina", code: "ar" },
+{ name: "Brazil", code: "br" },
+{ name: "France", code: "fr" },
+{ name: "Spain", code: "es" },
+{ name: "Germany", code: "de" },
+{ name: "Portugal", code: "pt" },
+{ name: "Netherlands", code: "nl" },
+{ name: "Belgium", code: "be" },
+{ name: "Croatia", code: "hr" },
+{ name: "Morocco", code: "ma" },
+{ name: "Japan", code: "jp" },
+{ name: "South Korea", code: "kr" },
+{ name: "Mexico", code: "mx" },
+{ name: "USA", code: "us" },
+{ name: "Canada", code: "ca" },
+{ name: "Uruguay", code: "uy" },
+{ name: "Italy", code: "it" },
+{ name: "Turkey", code: "tr" },
+{ name: "Saudi Arabia", code: "sa" }
+];
+
+// ================= LANGUAGES =================
+
+const texts = {
+
+ar: {
+help: "📖 قائمة الأوامر",
+pick: "⚽ اختر منتخبك",
+alreadyPicked: "❌ اخترت منتخبك مسبقاً",
+myTeam: "🏆 منتخبك:",
+noTeam: "❌ لم تختر منتخباً",
+guess: "🎮 خمن المنتخب",
+languageSaved: "✅ تم حفظ اللغة العربية"
+},
+
+en: {
+help: "📖 Commands List",
+pick: "⚽ Choose your team",
+alreadyPicked: "❌ You already selected a team",
+myTeam: "🏆 Your Team:",
+noTeam: "❌ No team selected",
+guess: "🎮 Guess The Team",
+languageSaved: "✅ English language saved"
+}
+
+};
+
+// ================= CLIENT =================
 
 const client = new Client({
-intents: [
-GatewayIntentBits.Guilds
-]
+intents: [GatewayIntentBits.Guilds]
 });
 
-// ================= AUTO DEPLOY COMMANDS =================
-
-async function deployCommands() {
-
-const commands = [
-
-new SlashCommandBuilder()
-.setName("help")
-.setDescription("Show commands"),
-
-new SlashCommandBuilder()
-.setName("worldcup")
-.setDescription("World Cup info"),
-
-new SlashCommandBuilder()
-.setName("teams")
-.setDescription("Show teams"),
-
-new SlashCommandBuilder()
-.setName("pick_team")
-.setDescription("Pick your team"),
-
-new SlashCommandBuilder()
-.setName("my_team")
-.setDescription("Show your team"),
-
-new SlashCommandBuilder()
-.setName("guess_team")
-.setDescription("Guess game"),
-
-new SlashCommandBuilder()
-.setName("leaderboard")
-.setDescription("Leaderboard"),
-
-new SlashCommandBuilder()
-.setName("language")
-.setDescription("Change language")
-.addStringOption(option =>
-option
-.setName("lang")
-.setDescription("ar or en")
-.setRequired(true)
-.addChoices(
-{ name: "Arabic", value: "ar" },
-{ name: "English", value: "en" }
-)
-),
-
-new SlashCommandBuilder()
-.setName("broadcast")
-.setDescription("Send DM to all members")
-.setDefaultMemberPermissions(
-PermissionFlagsBits.Administrator
-)
-.addStringOption(option =>
-option
-.setName("message")
-.setDescription("Message")
-.setRequired(true)
-)
-
-].map(cmd => cmd.toJSON());
-
-const rest = new REST({
-version: "10"
-}).setToken(process.env.DISCORD_TOKEN);
-
-try {
-
-console.log("Deploying commands...");
-
-await rest.put(
-Routes.applicationCommands(
-process.env.CLIENT_ID
-),
-{
-body: commands
-}
-);
-
-console.log("Commands deployed");
-
-} catch (err) {
-console.error(err);
-}
-
-}
-
-client.once(Events.ClientReady, async (readyClient) => {
+client.once(
+Events.ClientReady,
+(readyClient) => {
 
 console.log(
 "Logged in as ${readyClient.user.tag}"
 );
 
-await deployCommands();
+}
+);
+// ================= INTERACTIONS =================
 
-});
 client.on(Events.InteractionCreate, async (interaction) => {
 
 if (!interaction.guild) return;
@@ -221,15 +144,14 @@ resolve(row?.language || "ar");
 });
 }
 
+// ================= SLASH COMMANDS =================
+
 if (interaction.isChatInputCommand()) {
 
-const lang = await getLanguage(
-interaction.guild.id
-);
-
+const lang = await getLanguage(interaction.guild.id);
 const t = texts[lang];
 
-// ================= HELP =================
+// ===== HELP =====
 
 if (interaction.commandName === "help") {
 
@@ -243,7 +165,7 @@ embeds: [embed]
 
 }
 
-// ================= WORLDCUP =================
+// ===== WORLDCUP =====
 
 if (interaction.commandName === "worldcup") {
 
@@ -255,7 +177,7 @@ lang === "ar"
 
 }
 
-// ================= TEAMS =================
+// ===== TEAMS =====
 
 if (interaction.commandName === "teams") {
 
@@ -265,7 +187,7 @@ teams.join(" • ")
 
 }
 
-// ================= LANGUAGE =================
+// ===== LANGUAGE =====
 
 if (interaction.commandName === "language") {
 
@@ -288,7 +210,7 @@ selected === "ar"
 
 }
 
-// ================= PICK TEAM =================
+// ===== PICK TEAM =====
 
 if (interaction.commandName === "pick_team") {
 
@@ -333,7 +255,7 @@ ephemeral: true
 
 }
 
-// ================= MY TEAM =================
+// ===== MY TEAM =====
 
 if (interaction.commandName === "my_team") {
 
@@ -360,24 +282,33 @@ interaction.reply(
 
 }
 
-// ================= GUESS TEAM =================
+// ===== GUESS TEAM =====
 
 if (interaction.commandName === "guess_team") {
 
 const randomTeam =
-teams[
+guessTeams[
 Math.floor(
-Math.random() * teams.length
+Math.random() * guessTeams.length
 )
 ];
 
-return interaction.reply(
-"${t.guess}\n🎯 ${randomTeam}"
-);
+const imageUrl =
+"https://flagcdn.com/w640/${randomTeam.code}.png";
+
+const embed =
+new EmbedBuilder()
+.setTitle("🎮 Guess The Team")
+.setDescription("اكتب اسم المنتخب الظاهر في الصورة")
+.setImage(imageUrl);
+
+return interaction.reply({
+embeds: [embed]
+});
 
 }
 
-// ================= LEADERBOARD =================
+// ===== LEADERBOARD =====
 
 if (interaction.commandName === "leaderboard") {
 
@@ -389,7 +320,7 @@ db.all(
 if (!rows?.length) {
 
 return interaction.reply(
-"لا يوجد بيانات بعد."
+"لا يوجد متصدرون بعد."
 );
 
 }
@@ -408,19 +339,15 @@ interaction.reply(text);
 
 }
 
-// ================= BROADCAST =================
+// ===== BROADCAST =====
 
-if (
-interaction.commandName === "broadcast"
-) {
+if (interaction.commandName === "broadcast") {
 
 const message =
-interaction.options.getString(
-"message"
-);
+interaction.options.getString("message");
 
 await interaction.reply({
-content: "📨 بدأ الإرسال...",
+content: "📨 جاري الإرسال...",
 ephemeral: true
 });
 
@@ -434,18 +361,14 @@ for (const member of members.values()) {
 if (member.user.bot) continue;
 
 try {
-
 await member.send(message);
-
 sent++;
-
 } catch {}
 
 }
 
 interaction.followUp({
-content:
-"✅ تم الإرسال إلى ${sent} عضو",
+content: "✅ تم الإرسال إلى ${sent} عضو",
 ephemeral: true
 });
 
@@ -455,14 +378,9 @@ ephemeral: true
 
 // ================= SELECT MENU =================
 
-if (
-interaction.isStringSelectMenu()
-) {
+if (interaction.isStringSelectMenu()) {
 
-if (
-interaction.customId ===
-"team_select"
-) {
+if (interaction.customId === "team_select") {
 
 const team =
 interaction.values[0];
@@ -475,15 +393,14 @@ db.get(
 if (row) {
 
 return interaction.reply({
-content:
-"❌ لا يمكنك تغيير المنتخب.",
+content: "❌ لا يمكنك تغيير المنتخب.",
 ephemeral: true
 });
 
 }
 
 db.run(
-"INSERT INTO users (userId, team) VALUES (?, ?)",
+"INSERT INTO users(userId, team) VALUES(?, ?)",
 [
 interaction.user.id,
 team
@@ -492,7 +409,7 @@ team
 
 interaction.reply({
 content:
-"✅ ${team}",
+"✅ تم اختيار ${team}",
 ephemeral: true
 });
 
