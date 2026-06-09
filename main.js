@@ -290,3 +290,337 @@ const teamFlags = {
 "https://cdn.discordapp.com/attachments/1468904544321671220/1513911750888784072/HAI.png"
 
 };
+// ================= INTERACTIONS =================
+
+client.on(Events.InteractionCreate, async (interaction) => {
+
+if (!interaction.isChatInputCommand()) return;
+
+const lang = interaction.guild
+? await getLanguage(interaction.guild.id)
+: "ar";
+
+const t = texts[lang];
+
+// ================= HELP =================
+
+if (interaction.commandName === "help") {
+
+const embed = new EmbedBuilder()
+.setTitle(t.help)
+.setDescription(`
+/worldcup
+/teams
+/pick_team
+/my_team
+/guess_team
+/leaderboard
+/language
+/broadcast
+`);
+
+return interaction.reply({
+embeds: [embed]
+});
+
+}
+
+// ================= WORLDCUP =================
+
+if (interaction.commandName === "worldcup") {
+
+return interaction.reply(t.worldcup);
+
+}
+
+// ================= TEAMS =================
+
+if (interaction.commandName === "teams") {
+
+return interaction.reply(
+teams.join(" • ")
+);
+
+}
+
+// ================= PICK TEAM =================
+
+if (interaction.commandName === "pick_team") {
+
+db.get(
+"SELECT * FROM users WHERE userId = ?",
+[interaction.user.id],
+async (err, row) => {
+
+if (row) {
+
+return interaction.reply({
+content:
+`${t.alreadyPicked}: ${row.team}`,
+ephemeral: true
+});
+
+}
+
+const menu =
+new StringSelectMenuBuilder()
+.setCustomId("team_select")
+.setPlaceholder(t.pick)
+.addOptions(
+
+teams.map(team => ({
+label: team,
+value: team
+}))
+
+);
+
+const rowMenu =
+new ActionRowBuilder()
+.addComponents(menu);
+
+await interaction.reply({
+content: t.pick,
+components: [rowMenu],
+ephemeral: true
+});
+
+}
+);
+
+}
+
+// ================= MY TEAM =================
+
+if (interaction.commandName === "my_team") {
+
+db.get(
+"SELECT * FROM users WHERE userId = ?",
+[interaction.user.id],
+async (err, row) => {
+
+if (!row) {
+
+return interaction.reply({
+content: t.noTeam,
+ephemeral: true
+});
+
+}
+
+const embed =
+new EmbedBuilder()
+.setTitle(`${t.myTeam} ${row.team}`);
+
+if (teamFlags[row.team]) {
+embed.setImage(
+teamFlags[row.team]
+);
+}
+
+return interaction.reply({
+embeds: [embed]
+});
+
+}
+);
+
+}
+
+// ================= GUESS TEAM =================
+
+if (interaction.commandName === "guess_team") {
+
+const randomTeam =
+teams[
+Math.floor(
+Math.random() * teams.length
+)
+];
+
+const embed =
+new EmbedBuilder()
+.setTitle("🎮 Guess The Team")
+.setDescription(
+"Write the country name!"
+);
+
+if (teamFlags[randomTeam]) {
+embed.setImage(
+teamFlags[randomTeam]
+);
+}
+
+return interaction.reply({
+embeds: [embed]
+});
+
+}
+
+// ================= LEADERBOARD =================
+
+if (interaction.commandName === "leaderboard") {
+
+db.all(
+"SELECT * FROM leaderboard ORDER BY points DESC LIMIT 10",
+[],
+(err, rows) => {
+
+if (!rows.length) {
+
+return interaction.reply(
+"No players yet."
+);
+
+}
+
+const result =
+rows.map(
+(r, i) =>
+`${i + 1}. <@${r.userId}> - ${r.points}`
+).join("\n");
+
+interaction.reply(result);
+
+}
+);
+
+}
+
+// ================= LANGUAGE =================
+
+if (interaction.commandName === "language") {
+
+const selected =
+interaction.options.getString("lang");
+
+db.run(
+"INSERT OR REPLACE INTO guilds(guildId, language) VALUES(?,?)",
+[
+interaction.guild.id,
+selected
+]
+);
+
+return interaction.reply(
+selected === "ar"
+? texts.ar.languageSaved
+: texts.en.languageSaved
+);
+
+}
+
+// ================= BROADCAST =================
+
+if (interaction.commandName === "broadcast") {
+
+if (
+!interaction.member.permissions.has(
+PermissionFlagsBits.Administrator
+)
+) {
+
+return interaction.reply({
+content:
+"❌ Administrator only",
+ephemeral: true
+});
+
+}
+
+const message =
+interaction.options.getString(
+"message"
+);
+
+await interaction.reply({
+content:
+"📨 Sending...",
+ephemeral: true
+});
+
+const members =
+await interaction.guild.members.fetch();
+
+let sent = 0;
+
+for (const member of members.values()) {
+
+if (member.user.bot) continue;
+
+try {
+
+await member.send(message);
+sent++;
+
+} catch {}
+
+}
+
+interaction.followUp({
+content:
+`✅ Sent to ${sent} members`,
+ephemeral: true
+});
+
+}
+
+});
+
+// ================= SELECT MENU =================
+
+client.on(
+Events.InteractionCreate,
+async (interaction) => {
+
+if (
+!interaction.isStringSelectMenu()
+) return;
+
+if (
+interaction.customId !== "team_select"
+) return;
+
+const team =
+interaction.values[0];
+
+db.get(
+"SELECT * FROM users WHERE userId = ?",
+[interaction.user.id],
+(err, row) => {
+
+if (row) {
+
+return interaction.reply({
+content:
+"❌ You already selected a team",
+ephemeral: true
+});
+
+}
+
+db.run(
+"INSERT INTO users(userId, team) VALUES(?,?)",
+[
+interaction.user.id,
+team
+]
+);
+
+interaction.reply({
+content:
+`✅ Team selected: ${team}`,
+ephemeral: true
+});
+
+}
+);
+
+}
+);
+
+// ================= LOGIN =================
+
+client.login(
+process.env.DISCORD_TOKEN
+);
