@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, EmbedBuilder, REST, Routes, SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, REST, Routes, SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, PermissionFlagsBits } = require('discord.js');
 const express = require('express');
 const Database = require('better-sqlite3');
 
@@ -124,8 +124,6 @@ client.once('ready', async () => {
         console.error(error);
     }
 
-    // ⏳ نظام جدولة تلقائي لمباراة الافتتاح (فكرة 4 التلقائية)
-    // غداً 11 يونيو الافتتاح، نفترض انتهاء المباراة الساعة 21:00 UTC، البوت يعلن تلقائياً النتيجة والجوائز الساعة 21:30 UTC
     setupAutomaticMatchResult();
 });
 
@@ -205,7 +203,6 @@ client.on('interactionCreate', async interaction => {
 
     const { commandName, options, channel, user, guild } = interaction;
 
-    // أمر اختيار الفريق المفضّل
     if (commandName === 'choose-team') {
         await interaction.deferReply();
         const selectedTeam = options.getString('team');
@@ -220,7 +217,6 @@ client.on('interactionCreate', async interaction => {
         await interaction.editReply({ content: `🏆 تم بنجاح اختيار **${selectedTeam}** كفريقك المفضل الذي تشجعه وتدعمه في كأس العالم 2026! ⚽🔥` });
     }
 
-    // أمر توقع مباراة الافتتاح
     if (commandName === 'predict') {
         await interaction.deferReply({ ephemeral: true });
         const goalsMex = options.getInteger('mexico');
@@ -233,7 +229,6 @@ client.on('interactionCreate', async interaction => {
         await interaction.editReply({ content: `🔮 تم تسجيل توقعك لمباراة الافتتاح بنجاح: **المكسيك ${goalsMex} - ${goalsCan} كندا**. انتظر انتهاء المباراة غداً لمعرفة النتيجة وحصد الجوائز تلقائياً!` });
     }
 
-    // لعبة ركلات الترجيح بالأزرار الذكية
     if (commandName === 'penalty') {
         await interaction.deferReply();
 
@@ -281,10 +276,9 @@ client.on('interactionCreate', async interaction => {
         });
     }
 
-    // بطاقة الحظ اليومية
     if (commandName === 'lucky-card') {
         await interaction.deferReply();
-        const nowStr = new Date().toDateString(); // لمقارنة الأيام لمنع التكرار قبل 24 ساعة
+        const nowStr = new Date().toDateString();
 
         const userData = db.prepare('SELECT lastLuckyCard, points FROM users WHERE userId = ?').get(user.id);
         if (userData && userData.lastLuckyCard === nowStr) {
@@ -300,7 +294,6 @@ client.on('interactionCreate', async interaction => {
 
         const finalReward = luckyRewards[Math.floor(Math.random() * luckyRewards.length)];
         
-        // تحديث قاعدة البيانات بوقت السحب والنقاط
         if (!userData) {
             db.prepare('INSERT INTO users (userId, username, points, lastLuckyCard) VALUES (?, ?, ?, ?)').run(user.id, user.username, finalReward.pts, nowStr);
         } else {
@@ -314,7 +307,6 @@ client.on('interactionCreate', async interaction => {
         await interaction.editReply({ embeds: [luckyEmbed] });
     }
 
-    // أمر معلومات البوت الصافي الدقيق
     if (commandName === 'info') {
         await interaction.deferReply();
         const ping = client.ws.ping;
@@ -332,7 +324,6 @@ client.on('interactionCreate', async interaction => {
         await interaction.editReply({ embeds: [infoEmbed] });
     }
 
-    // باقي الأوامر القياسية السابقة (Help, Teams, Countdown, Leaderboard, Set-News)
     if (commandName === 'help') {
         await interaction.deferReply();
         const helpEmbed = new EmbedBuilder()
@@ -398,21 +389,14 @@ client.on('interactionCreate', async interaction => {
 
 // 9️⃣ ميكانيكية الإعلان التلقائي لنتائج التوقعات والمباراة
 function setupAutomaticMatchResult() {
-    // توقيت انتهاء مباراة الافتتاح الافتراضي غداً (11 يونيو 2026) مع إضافة نصف ساعة (مثال: ضبط المؤقت ليعمل تلقائياً)
     const matchEndTime = new Date('2026-06-11T21:30:00Z'); 
     const delay = matchEndTime - new Date();
 
     if (delay > 0) {
         setTimeout(async () => {
             console.log('🤖 جاري معالجة وتوزيع جوائز التوقعات لمباراة الافتتاح تلقائياً...');
-            
-            // نفترض أن النتيجة الحقيقية لمباراة الافتتاح انتهت بفوز المكسيك 2 - 1 على كندا
             const correctResult = "2-1"; 
-
-            // جلب روم الأخبار لإعلان الفائزين
             const guildsConfig = db.prepare('SELECT * FROM config').all();
-            
-            // جلب الأعضاء أصحاب التوقع الصحيح من قاعدة البيانات
             const winners = db.prepare('SELECT userId FROM predictions WHERE prediction = ?').all(correctResult);
 
             for (const conf of guildsConfig) {
@@ -423,14 +407,13 @@ function setupAutomaticMatchResult() {
                     let winnersMentions = winners.map(w => `<@${w.userId}>`).join(', ');
                     if (!winnersMentions) winnersMentions = "لا يوجد أحد توقع النتيجة بدقة 😔";
 
-                    // توزيع النقاط تلقائياً على أصحاب التوقع الصحيح
                     winners.forEach(w => {
                         db.prepare('UPDATE users SET points = points + 3 WHERE userId = ?').run(w.userId);
                     });
 
                     const resultEmbed = new EmbedBuilder()
                         .setTitle('🚨 انتهت المباراة! النتيجة الرسمية وجوائز التوقعات 🔮')
-                        .setDescription(`⚽ **مباراة الافتتاح:** المكسيك **2 - 1** كندا\n\n🥇 **الأعضاء العباقرة الذين توقعوا النتيجة الصحيحة ونالوا +3 نقاط كافية:**\n${winnersMentions}`)
+                        .setDescription(`⚽ **مباراة الافتتاح:** المكسيك **2 - 1** كندا\n\n🥇 **الأعضاء العباقرة الذين توقعوا النتيجة الصحيحة ونالوا +3 نقاط كاملة:**\n${winnersMentions}`)
                         .setColor(0xF1C40F)
                         .setThumbnail('https://cdn-icons-png.flaticon.com/512/3112/3112946.png');
 
