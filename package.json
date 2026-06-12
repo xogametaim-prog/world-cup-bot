@@ -1,10 +1,10 @@
 {
-  "name": "my-first-app",
+  "name": "uno-game",
   "version": "1.0.0",
-  "description": "مشروعي الأول باستخدام نود جي إس",
+  "description": "لعبة أونو متكاملة ضد البوت",
   "main": "main.js",
+  "type": "module",
   "scripts": {
     "start": "node main.js"
-  },
-  "dependencies": {}
+  }
 }
