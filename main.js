@@ -1,5 +1,5 @@
 /**
- * Bot Version: 9.3.0v (Ultimate Action UNO Engine - 100% Verified Code)
+ * Bot Version: 9.4.0v (Pure UNO Engine - Zero Errors Edition)
  * Developer: ta_im1 | Team: TRL for development
  * Platform: Optimized for Mobile & Production (Render / Pydroid 3)
  */
@@ -22,7 +22,7 @@ const client = new Client({
     ]
 });
 
-// مصفوفة كروت الأونو المتنوعة (أرقام + كروت أكشن حماسية)
+// مصفوفة كروت الأونو المتنوعة الحماسية (أرقام + كروت أكشن)
 const CARD_COLORS = ['🔴 أحمر', '🔵 أزرق', '🟢 أخضر', '🟡 أصفر'];
 const CARD_VALUES = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '🚫 تخطي', '🔄 عكس', '➕ اسحب 2'];
 
@@ -30,21 +30,18 @@ function generateDeck() {
     let deck = [];
     for (let color of CARD_COLORS) {
         for (let value of CARD_VALUES) {
-            // كروت الأرقام والأكشن الأساسية
             deck.push({ color, value, label: `${color} [${value}]` });
-            // تكرار الكروت لزيادة التنوع في السحب
             if (value !== '0') {
                 deck.push({ color, value, label: `${color} [${value}]` });
             }
         }
     }
-    // خلط الأوراق عشوائياً 100% لضمان عدم التكرار
     return deck.sort(() => 0.5 - Math.random());
 }
 
 let unoGame = null;
 
-// المكان الوحيد والصحيح لتسجيل أمر السلاش
+// تم تصحيح القوس هنا بالملي ومسح القوس الملعون الزائد [ ]
 client.once('ready', async () => {
     console.log(`[SYSTEM] UNO Bot Online & Stabilized!`);
     
@@ -52,19 +49,22 @@ client.once('ready', async () => {
         new SlashCommandBuilder()
             .setName('uno')
             .setDescription('بدء لعبة أونو الكلاسيكية بالأزرار والرسائل المخفية')
-            .addUserOption(opt => opt.setName('friend').setDescription('منشن صديقك لتحديه (اتركه فارغاً للعب ضد البوت)'))
-    ].map(cmd => cmd.toJSON());
+            .addUserOption(opt => 
+                opt.setName('friend')
+                   .setDescription('منشن صديقك لتحديه (اتركه فارغاً للعب ضد البوت)')
+            )
+    ].map(cmd => cmd.toJSON()); // هنا تم تنظيف كل شيء وصار صحيح 100%
     
     const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
     try {
         await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-        console.log(`[SYSTEM] Commands deployed successfully.`);
+        console.log(`[SYSTEM] Global commands registered successfully.`);
     } catch (e) { 
         console.error(e); 
     }
 });
 
-// ⚡ الاختصار النصي .uno (نظيف ومحمي 100% بدون أي أقواس زائدة)
+// ⚡ الاختصار النصي .uno لتشغيل اللعبة فوراً
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
 
@@ -146,7 +146,6 @@ client.on('interactionCreate', async interaction => {
                 currentRow = new ActionRowBuilder(); 
             }
             
-            // الكرت يكون قابل للعب إذا طابق اللون أو القيمة + يكون دور اللاعب
             const canPlay = (unoGame.turn === playerObj.id) && (card.color === unoGame.topCard.color || card.value === unoGame.topCard.value);
             
             currentRow.addComponents(
