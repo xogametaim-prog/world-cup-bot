@@ -1,12 +1,12 @@
 {
-  "name": "brq-economy-bot",
+  "name": "trl-economy-bot",
   "version": "1.0.0",
-  "description": "Advanced Economy Bot for BRQ Community",
-  "main": "index.js",
+  "description": "Public Advanced Economy Bot by TRL team",
+  "main": "main.js",
   "dependencies": {
     "discord.js": "^14.14.1"
   },
   "scripts": {
-    "start": "node index.js"
+    "start": "node main.js"
   }
 }
