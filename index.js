@@ -107,11 +107,21 @@ client.on('interactionCreate', async interaction => {
   }
 });
 
-// التعامل مع الاختصارات
+// التعامل مع اختصارات الشات والردود التلقائية
 client.on('messageCreate', async message => {
   if (message.author.bot || !message.guild) return;
 
   const text = message.content.trim().toLowerCase();
+
+  // [ميزة الردود التلقائية] فحص ما إذا كانت الكلمة مخزنة في قاعدة البيانات للسيرفر الحالي
+  const db = JSON.parse(fs.readFileSync('./db.json', 'utf8'));
+  if (db.replies && db.replies[message.guild.id] && db.replies[message.guild.id][text]) {
+    const autoResponse = db.replies[message.guild.id][text];
+    // يقوم البوت بعمل ريبلاي ومنشن للشخص مباشرة
+    return message.reply({ content: `${message.author} ${autoResponse}` });
+  }
+
+  // التكملة العادية لمعالجة اختصارات الأوامر الإدارية
   const args = text.split(/ +/);
   const firstWord = args.shift();
 
