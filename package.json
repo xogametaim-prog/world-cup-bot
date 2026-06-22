@@ -1,17 +1,12 @@
 {
-  "name": "trl-bank-bot",
+  "name": "system-bot-for-all",
   "version": "1.0.0",
-  "description": "FROM TRL TEAM™ Bot with Slash Commands & Database Support",
+  "description": "Advanced multi-server moderation bot with Slash, Prefixes, and Short Commands",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "discord.js": "^14.14.1",
-    "express": "^4.19.2",
-    "mongoose": "^8.2.1"
-  },
-  "engines": {
-    "node": ">=16.9.0"
+    "discord.js": "^14.14.1"
   }
 }
