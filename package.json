@@ -1,7 +1,7 @@
 {
   "name": "system-bot-for-all",
   "version": "1.0.0",
-  "description": "Advanced multi-server moderation bot with Slash, Prefixes, and Short Commands",
+  "description": "Multi-server Management & Moderation Bot with Slash & Text Shortcuts",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
