@@ -1,6 +1,17 @@
 const { Client, GatewayIntentBits, Collection, REST, Routes, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
 const fs = require('fs');
+const http = require('http'); // لمنع إغلاق ريندر
 const config = require('./config.json');
+
+// حل مشكلة ريندر (فتح بورت وهمي لتفادي الـ Port Scan Timeout)
+const server = http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end('System Bot For All Is Running Perfectly! 🚀\n');
+});
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(`🌐 Web server is bypass-listening on port ${PORT}`);
+});
 
 const client = new Client({
   intents: [
@@ -26,37 +37,35 @@ for (const file of commandFiles) {
   }
 }
 
-// تسجيل أوامر السلاش عند التشغيل فوراً بشكل عام (Global) لجميع السيرفرات
+// تسجيل أوامر السلاش تلقائياً باسم البوت المتصل فوراً
 client.once('ready', async () => {
   console.log(`🤖 ${client.user.username} is online and ready for all servers!`);
   
-  const rest = new REST({ version: '10' }).setToken(process.env.TOKEN || config.token);
+  // نستخدم توكن الكلاينت المتصل مباشرة لحل مشكلة 'Expected token to be set'
+  const rest = new REST({ version: '10' }).setToken(client.token);
   try {
     console.log('🔄 Started refreshing application (/) commands.');
     await rest.put(Routes.applicationCommands(client.user.id), { body: commandsData });
     console.log('✅ Successfully reloaded application (/) commands.');
   } catch (error) {
-    console.error(error);
+    console.error('❌ Error deploying slash commands:', error);
   }
 });
 
-// حدث عند دخول البوت لسيرفر جديد (إنشاء رتبة وإرسال الإيمبد)
+// حدث دخول السيرفر الجديد
 client.on('guildCreate', async (guild) => {
   try {
-    // 1. إنشاء رتبة التحكم بالبوت
     const controlRole = await guild.roles.create({
       name: 'System Control',
       color: '#ff0000',
       reason: 'رتبة التحكم بإعدادات وأوامر بوت system bot for all',
     });
 
-    // 2. البحث عن أعلى رتبة في السيرفر لمنشنته (باستثناء البوت نفسه)
     const highestRole = guild.roles.cache
       .filter(r => r.id !== guild.roles.everyone.id && !r.managed)
       .sort((a, b) => b.position - a.position)
       .first();
 
-    // 3. البحث عن أول روم يمدي البوت يرسل فيها رسالة
     const channel = guild.channels.cache
       .filter(c => c.type === 0 && c.permissionsFor(guild.members.me).has(PermissionFlagsBits.SendMessages))
       .first();
@@ -83,7 +92,6 @@ client.on('interactionCreate', async interaction => {
   const command = client.commands.get(interaction.commandName);
   if (!command) return;
 
-  // التحقق من الصلاحية: يجب أن يمتلك العضو صلاحية Administrator أو يمتلك رتبة System Control
   const hasAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
   const hasRole = interaction.member.roles.cache.some(r => r.name === 'System Control');
 
@@ -99,7 +107,7 @@ client.on('interactionCreate', async interaction => {
   }
 });
 
-// التعامل مع اختصارات الشات المباشرة (بدون بريفكس وبدون علامات)
+// التعامل مع الاختصارات
 client.on('messageCreate', async message => {
   if (message.author.bot || !message.guild) return;
 
@@ -107,11 +115,9 @@ client.on('messageCreate', async message => {
   const args = text.split(/ +/);
   const firstWord = args.shift();
 
-  // البحث عن الأمر من خلال الاسم أو الاختصار المباشر
   const command = client.commands.find(cmd => cmd.name === firstWord || (cmd.shortcuts && cmd.shortcuts.includes(firstWord)));
   if (!command) return;
 
-  // التحقق من الصلاحية
   const hasAdmin = message.member.permissions.has(PermissionFlagsBits.Administrator);
   const hasRole = message.member.roles.cache.some(r => r.name === 'System Control');
 
@@ -120,7 +126,6 @@ client.on('messageCreate', async message => {
   }
 
   try {
-    // تحويل الوسائط العادية لتتوافق مع كود التشغيل للمسج
     await command.executeMessage(message, args);
   } catch (error) {
     console.error(error);
