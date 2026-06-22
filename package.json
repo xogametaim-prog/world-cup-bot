@@ -1,7 +1,7 @@
 {
   "name": "system-bot-for-all",
   "version": "1.0.0",
-  "description": "Multi-server Management & Moderation Bot with Slash & Text Shortcuts",
+  "description": "Multi-server Moderation and Management Bot by TRL.dev",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
