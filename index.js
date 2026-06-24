@@ -98,7 +98,6 @@ client.once('ready', async () => {
 
     try {
         console.log('Registering slash commands...');
-        // تم تحديث التسجيل ليكون شاملاً وفورياً
         await rest.put(
             Routes.applicationCommands(CLIENT_ID),
             { body: commands },
@@ -141,7 +140,8 @@ async function sendTicketSetup(channel) {
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.content.startsWith(PREFIX)) return;
 
-    const args = message.content.slice(PREFIX.length).trim().split(/+/);
+    // تم تصحيح الخطأ الإملائي هنا بإضافة مسافة فارغة قبل علامة الجمع
+    const args = message.content.slice(PREFIX.length).trim().split(/ +/);
     const command = args.shift().toLowerCase();
 
     if (command === 'setup-ticket' || command === 'setup') {
