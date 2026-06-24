@@ -1,12 +1,15 @@
 {
-  "name": "system-bot-for-all",
+  "name": "trl-system-bot",
   "version": "1.0.0",
-  "description": "Multi-server Moderation and Management Bot by TRL.dev",
+  "description": "Ticket and Embed Bot by TRL.dev",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "discord.js": "^14.14.1"
+    "discord.js": "^14.15.3"
+  },
+  "engines": {
+    "node": ">=16.11.0"
   }
 }
