@@ -1,13 +1,14 @@
 {
   "name": "zone-ticket-bot",
   "version": "1.0.0",
-  "description": "Premium Ticket and Embed Bot for Discord",
+  "description": "Premium Ticket and Embed Bot for Discord with Anti-Sleep",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
     "register": "node deploy-commands.js"
   },
   "dependencies": {
-    "discord.js": "^14.14.1"
+    "discord.js": "^14.14.1",
+    "axios": "^1.6.0"
   }
 }
