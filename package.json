@@ -1,13 +1,14 @@
 {
-  "name": "discord-ticket-bot",
+  "name": "rocket-league-bot",
   "version": "1.0.0",
-  "description": "Ticket Bot with Select Menu for Render",
+  "description": "Rocket League Bot with Advanced Logs and Systems",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
     "discord.js": "^14.14.1",
-    "express": "^4.18.2"
+    "express": "^4.18.2",
+    "@napi-rs/canvas": "^0.1.44"
   }
 }
