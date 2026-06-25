@@ -17,7 +17,7 @@ const express = require('express');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-app.get('/', (req, res) => res.send('Ticket Bot is Active!'));
+app.get('/', (req, res) => res.send('Ticket & Log Bot Active!'));
 app.listen(PORT, '0.0.0.0', () => console.log(`Server connected to port ${PORT}`));
 
 const client = new Client({
@@ -25,24 +25,38 @@ const client = new Client({
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMembers // ضروري لبرودكاست الخاص -dm
+        GatewayIntentBits.GuildMembers
     ]
 });
 
+// الاختصارات الأساسية والمحدثة بالكامل
 const TICKET_PREFIX = '-st'; 
 const EMBED_PREFIX = '-em';  
 const LOG_PREFIX = '-lg';    
 const DM_PREFIX = '-dm';     
 
+const LOG_DM_PREFIX = '-lgdm';         // لوج برودكاست الخاص
+const LOG_FEEDBACK_PREFIX = '-lgfeedback'; // لوج التقييمات
+const LOG_EMBED_PREFIX = '-lgem';     // لوج من عمل إمبد
+const STOP_DM_PREFIX = '-sdm';         // إيقاف البرودكاست
+const DM_ANYONE_PREFIX = '-dmanyone';   // فحص عمليات الإرسال النشطة
+
 const tempSetup = new Map();
 const embedSetup = new Map();
 const dmSetup = new Map();
 
-let logChannelId = null; 
+// تخزين معرفات قنوات اللوج المختلفة
+let logChannelId = null;        // -lg
+let logDmChannelId = null;      // -lgdm
+let logFeedbackChannelId = null; // -lgfeedback
+let logEmbedChannelId = null;   // -lgem
+
+// لتتبع وإدارة عمليات البرودكاست النشطة وإمكانية إيقافها
+let activeBroadcast = null; 
 
 // ==================== إعدادات نظام التذاكر المطور والمستقر ====================
 const TICKET_CONFIG = {
-    categoryID: 'ايدي_قسم_التذاكر_هنا', // ضع أيدي قسم التذاكر هنا
+    categoryID: 'ايدي_قسم_التذاكر_هنا', 
 
     mainEmbedImage: 'https://i.imgur.com/ضع_رابط_صورة_البوكس_الرئيسي_هنا.png', 
     ticketEmbedImage: 'https://i.imgur.com/ضع_رابط_صورة_التذكرة_الداخلية_هنا.png',
@@ -138,10 +152,9 @@ async function sendTicketSetup(channel) {
     await channel.send({ embeds: [embed], components: [row] });
 }
 
-// دالة إرسال تقرير اللوج عند إغلاق التذكرة
+// دالة إرسال لوج التكت المعتاد
 async function sendTicketLog(guild, channelName, creatorId, claimerId, closerUser) {
     if (!logChannelId) return;
-
     const logChannel = guild.channels.cache.get(logChannelId);
     if (!logChannel) return;
 
@@ -166,10 +179,10 @@ async function sendTicketLog(guild, channelName, creatorId, claimerId, closerUse
     }
 }
 
-// دالة إرسال تقرير التقييم للوج
+// دالة إرسال لوج التقييمات المستلمة
 async function sendRatingLog(guild, creator, rating, claimerName) {
-    if (!logChannelId) return;
-    const logChannel = guild.channels.cache.get(logChannelId);
+    if (!logFeedbackChannelId) return;
+    const logChannel = guild.channels.cache.get(logFeedbackChannelId);
     if (!logChannel) return;
 
     const ratingStars = '⭐'.repeat(rating);
@@ -191,11 +204,157 @@ async function sendRatingLog(guild, creator, rating, claimerName) {
     }
 }
 
+// دالة إرسال تقرير اللوج الخاص ببرودكاست الخاص -dm
+async function sendDmLog(guild, sender, title, totalCount, successCount, failedCount, isStopped = false) {
+    if (!logDmChannelId) return;
+    const logChannel = guild.channels.cache.get(logDmChannelId);
+    if (!logChannel) return;
+
+    const logEmbed = new EmbedBuilder()
+        .setTitle(isStopped ? '🚫 تم إيقاف برودكاست الخاص يدوياً' : '📢 سجل إرسال برودكاست خاص - DM Log')
+        .setColor(isStopped ? '#e67e22' : '#3498db')
+        .addFields(
+            { name: '👤 المرسل الإداري', value: `${sender}`, inline: true },
+            { name: '📝 عنوان الرسالة', value: `\`${title}\``, inline: true },
+            { name: '📊 الإجمالي المستهدف', value: `\`${totalCount}\` عضو`, inline: true },
+            { name: '✅ تم الإرسال بنجاح', value: `\`${successCount}\` عضو`, inline: true },
+            { name: '❌ فشل الإرسال (الخاص مغلق)', value: `\`${failedCount}\` عضو`, inline: true }
+        )
+        .setTimestamp();
+
+    try {
+        await logChannel.send({ embeds: [logEmbed] });
+    } catch (err) {
+        console.error(err);
+    }
+}
+
+// دالة إرسال اللوج الخاص بمن صمم ونشر إمبد مخصص -em
+async function sendEmbedLog(guild, sender, title, description, channel) {
+    if (!logEmbedChannelId) return;
+    const logChannel = guild.channels.cache.get(logEmbedChannelId);
+    if (!logChannel) return;
+
+    const logEmbed = new EmbedBuilder()
+        .setTitle('📝 سجل تصميم ونشر إمبد مخصص')
+        .setColor('#9b59b6')
+        .addFields(
+            { name: '👤 المصمم المسؤول', value: `${sender}`, inline: true },
+            { name: '📍 قناة النشر', value: `${channel}`, inline: true },
+            { name: 'عنوان الإمبد', value: `\`${title}\``, inline: false },
+            { name: 'وصف الإمبد', value: `\`\`\`${description}\`\`\``, inline: false }
+        )
+        .setTimestamp();
+
+    try {
+        await logChannel.send({ embeds: [logEmbed] });
+    } catch (err) {
+        console.error(err);
+    }
+}
+
+async function startEmbedSetup(channel, user) {
+    const member = channel.guild.members.cache.get(user.id);
+    if (!member || !member.permissions.has(PermissionFlagsBits.Administrator)) {
+        return channel.send('❌ عذراً، هذا الأمر مخصص للإداريين فقط.');
+    }
+
+    const embedState = { step: 1, title: null, description: null, buttonLabel: null, messagesToDelete: [] };
+    embedSetup.set(user.id, embedState);
+
+    const prompt1 = await channel.send(`${user}, 📝 **بدء إعداد إمبد مخصص**\n\n**الخطوة [1/3]:** يرجى كتابة **عنوان (Title)** الإمبد:`);
+    embedState.messagesToDelete.push(prompt1.id);
+}
+
+// دالة مساعدة لربط قنوات اللوج المختلفة بسهولة وبشكل نظيف
+async function handleLogSetup(message, prefix, logVarName, logName) {
+    const member = message.member;
+    if (!member.permissions.has(PermissionFlagsBits.Administrator)) {
+        return message.reply('❌ عذراً، هذا الأمر مخصص للإداريين فقط.');
+    }
+
+    const args = message.content.slice(prefix.length).trim().split(/ +/);
+    const channelMention = message.mentions.channels.first();
+    const inputId = args[0];
+
+    const targetChannel = channelMention || message.guild.channels.cache.get(inputId);
+
+    if (!targetChannel || targetChannel.type !== ChannelType.GuildText) {
+        return message.reply(`❌ يرجى منشن قناة نصية صحيحة أو وضع الأيدي الخاص بها لتكون قناة سجلات ${logName}:`);
+    }
+
+    if (logVarName === 'logChannelId') logChannelId = targetChannel.id;
+    if (logVarName === 'logDmChannelId') logDmChannelId = targetChannel.id;
+    if (logVarName === 'logFeedbackChannelId') logFeedbackChannelId = targetChannel.id;
+    if (logVarName === 'logEmbedChannelId') logEmbedChannelId = targetChannel.id;
+
+    await message.reply(`✅ **تم بنجاح ربط وتعيين قناة سجلات [${logName}] على: ${targetChannel}**`);
+    await message.delete().catch(() => {});
+}
+
 // التعامل مع الرسائل والاختصارات
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
 
-    // الاختصار -st لبوكس التذاكر
+    // 1. ربط قنوات اللوج الأربعة المخصصة والمستقلة
+    if (message.content.startsWith(LOG_DM_PREFIX)) {
+        return handleLogSetup(message, LOG_DM_PREFIX, 'logDmChannelId', 'الرسائل الخاصة - DM');
+    }
+    if (message.content.startsWith(LOG_FEEDBACK_PREFIX)) {
+        return handleLogSetup(message, LOG_FEEDBACK_PREFIX, 'logFeedbackChannelId', 'التقييمات - Feedback');
+    }
+    if (message.content.startsWith(LOG_EMBED_PREFIX)) {
+        return handleLogSetup(message, LOG_EMBED_PREFIX, 'logEmbedChannelId', 'نشر الإمبد - Embed');
+    }
+    if (message.content.startsWith(LOG_PREFIX)) {
+        return handleLogSetup(message, LOG_PREFIX, 'logChannelId', 'سجل التذاكر - Tickets');
+    }
+
+    // 2. إيقاف عملية البرودكاست النشطة فوراً يدوياً -sdm
+    if (message.content.trim() === STOP_DM_PREFIX) {
+        if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
+            return message.reply('❌ عذراً، هذا الأمر مخصص للإداريين فقط.');
+        }
+
+        if (!activeBroadcast) {
+            return message.reply('❌ لا توجد أي عملية إرسال برودكاست (DM Broadcast) نشطة حالياً لإيقافها.');
+        }
+
+        clearInterval(activeBroadcast.interval);
+        activeBroadcast.isStopped = true;
+
+        await message.reply('🚫 **تم إيقاف عملية الإرسال بالخاص يدوياً وقطع الاتصال فوراً!**');
+        
+        // إرسال اللوج النهائي المفصل بالتقارير الموقوفة لقناة سجل برودكاست الخاص
+        await sendDmLog(
+            message.guild, 
+            activeBroadcast.sender, 
+            activeBroadcast.title, 
+            activeBroadcast.totalCount, 
+            activeBroadcast.sentCount, 
+            activeBroadcast.failedCount, 
+            true
+        );
+
+        activeBroadcast = null;
+        await message.delete().catch(() => {});
+        return;
+    }
+
+    // 3. فحص ومراقبة عمليات الإرسال النشطة لمنع التداخل -dmanyone
+    if (message.content.trim() === DM_ANYONE_PREFIX) {
+        if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
+            return message.reply('❌ عذراً، هذا الأمر مخصص للإداريين فقط.');
+        }
+
+        if (activeBroadcast) {
+            return message.reply(`📊 **يوجد عملية برودكاست نشطة حالياً!**\n\n👤 الإداري المرسل: ${activeBroadcast.sender}\n📝 عنوان الإرسال: \`${activeBroadcast.title}\`\n📈 نسبة التقدم الحالية: \`${activeBroadcast.sentCount + activeBroadcast.failedCount}/${activeBroadcast.totalCount}\` عضو.`);
+        } else {
+            return message.reply('✅ لا توجد أي عملية إرسال نشطة بالخاص حالياً في السيرفر من أي إداري.');
+        }
+    }
+
+    // 4. الاختصار -st لإعداد البوكس التفاعلي
     if (message.content.trim() === TICKET_PREFIX) {
         if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
             return message.reply('❌ عذراً، هذا الأمر مخصص للإداريين فقط.');
@@ -209,49 +368,26 @@ client.on('messageCreate', async message => {
         return;
     }
 
-    // الاختصار -em للإمبد المخصص
+    // 5. الاختصار -em للإمبد المخصص
     if (message.content.trim() === EMBED_PREFIX) {
-        const member = message.member;
-        if (!member.permissions.has(PermissionFlagsBits.Administrator)) {
-            return message.reply('❌ عذراً، هذا الأمر مخصص للإداريين فقط.');
+        try {
+            await startEmbedSetup(message.channel, message.author);
+            await message.delete().catch(() => {});
+        } catch (err) {
+            console.error(err);
         }
-
-        const embedState = { step: 1, title: null, description: null, buttonLabel: null, messagesToDelete: [] };
-        embedSetup.set(message.author.id, embedState);
-
-        const prompt1 = await message.channel.send(`${message.author}, 📝 **بدء إعداد إمبد مخصص**\n\n**الخطوة [1/3]:** يرجى كتابة **عنوان (Title)** الإمبد:`);
-        embedState.messagesToDelete.push(message.id, prompt1.id);
         return;
     }
 
-    // الاختصار -lg لقناة السجلات
-    if (message.content.startsWith(LOG_PREFIX)) {
-        const member = message.member;
-        if (!member.permissions.has(PermissionFlagsBits.Administrator)) {
-            return message.reply('❌ عذراً، هذا الأمر مخصص للإداريين فقط.');
-        }
-
-        const args = message.content.slice(LOG_PREFIX.length).trim().split(/ +/);
-        const channelMention = message.mentions.channels.first();
-        const inputId = args[0];
-
-        const targetChannel = channelMention || message.guild.channels.cache.get(inputId);
-
-        if (!targetChannel || targetChannel.type !== ChannelType.GuildText) {
-            return message.reply('❌ يرجى منشن قناة نصية صحيحة أو وضع الأيدي الخاص بها لتكون قناة السجلات:');
-        }
-
-        logChannelId = targetChannel.id;
-        await message.reply(`✅ **تم بنجاح ربط وتعيين قناة السجلات (Logs) على: ${targetChannel}**`);
-        await message.delete().catch(() => {});
-        return;
-    }
-
-    // الاختصار -dm لبرودكاست الخاص الذكي والآمن
+    // 6. الاختصار -dm لبرودكاست الخاص الذكي والآمن
     if (message.content.trim() === DM_PREFIX) {
         const member = message.member;
         if (!member.permissions.has(PermissionFlagsBits.Administrator)) {
             return message.reply('❌ عذراً، هذا الأمر مخصص للإداريين فقط.');
+        }
+
+        if (activeBroadcast) {
+            return message.reply(`❌ لا يمكنك بدء برودكاست جديد؛ لأن هناك عملية إرسال نشطة ومستمرة حالياً بواسطة المشرف: ${activeBroadcast.sender}`);
         }
 
         const dmState = { step: 1, title: null, description: null, imageUrl: null, messagesToDelete: [] };
@@ -301,7 +437,9 @@ client.on('messageCreate', async message => {
 
             await message.channel.send({ embeds: [customEmbed], components: [row] });
             
-            // مسح جميع رسائل الإعداد والإجابات التفاعلية للحفاظ على نظافة الروم
+            // إرسال تقرير اللوج الخاص بتصميم الإمبد ونشره
+            await sendEmbedLog(message.guild, message.author, state.title, state.description, message.channel);
+
             setTimeout(async () => {
                 for (const msgId of state.messagesToDelete) {
                     await message.channel.messages.delete(msgId).catch(() => {});
@@ -313,7 +451,7 @@ client.on('messageCreate', async message => {
         }
     }
 
-    // تتبع خطوات إعداد برودكاست الخاص -dm مع نظام الإرسال التدريجي
+    // تتبع خطوات إعداد برودكاست الخاص -dm مع نظام الإرسال التدريجي والآمن
     if (dmSetup.has(message.author.id)) {
         const state = dmSetup.get(message.author.id);
         state.messagesToDelete.push(message.id);
@@ -354,40 +492,56 @@ client.on('messageCreate', async message => {
 
             const statusMsg = await message.channel.send('⏳ **جاري بدء عملية البرودكاست التدريجي والآمن لتجنب البان...**');
 
-            // مسح رسائل إعداد البرودكاست فوراً ليبقى الشات نظيفاً
             setTimeout(async () => {
                 for (const msgId of state.messagesToDelete) {
                     await message.channel.messages.delete(msgId).catch(() => {});
                 }
             }, 1000);
 
-            // جلب جميع أعضاء السيرفر للإرسال لهم
             const members = await message.guild.members.fetch();
             const memberArray = Array.from(members.values()).filter(m => !m.user.bot);
 
-            let sentCount = 0;
-            let failedCount = 0;
+            // تفعيل نظام الإدارة والتحكم في البرودكاست ليكون متاحاً للإيقاف بـ -sdm
+            activeBroadcast = {
+                sender: message.author,
+                title: state.title,
+                totalCount: memberArray.length,
+                sentCount: 0,
+                failedCount: 0,
+                isStopped: false,
+                interval: null
+            };
+
             let index = 0;
 
-            // دالة الإرسال التدريجي الآمن (كل 3 ثوانٍ رسالة لمنع باند ديسكورد)
-            const interval = setInterval(async () => {
+            activeBroadcast.interval = setInterval(async () => {
+                // إذا تم طلب إيقاف البرودكاست يدوياً عبر -sdm
+                if (!activeBroadcast || activeBroadcast.isStopped) {
+                    clearInterval(activeBroadcast?.interval);
+                    return;
+                }
+
                 if (index >= memberArray.length) {
-                    clearInterval(interval);
-                    await statusMsg.edit(`✅ **اكتمل البرودكاست بنجاح!**\n\n📬 تم الإرسال إلى: \`${sentCount}\` عضو.\n❌ فشل الإرسال لـ: \`${failedCount}\` عضو (بسبب إغلاق الخاص لديهم).`);
+                    clearInterval(activeBroadcast.interval);
+                    await statusMsg.edit(`✅ **اكتمل البرودكاست بنجاح!**\n\n📬 تم الإرسال إلى: \`${activeBroadcast.sentCount}\` عضو.\n❌ فشل الإرسال لـ: \`${activeBroadcast.failedCount}\` عضو.`);
+                    
+                    // إرسال اللوج النهائي والتقرير لقناة سجل برودكاست الخاص
+                    await sendDmLog(message.guild, activeBroadcast.sender, activeBroadcast.title, activeBroadcast.totalCount, activeBroadcast.sentCount, activeBroadcast.failedCount);
+                    activeBroadcast = null;
                     return;
                 }
 
                 const targetMember = memberArray[index];
                 try {
                     await targetMember.send({ embeds: [broadcastEmbed] });
-                    sentCount++;
+                    activeBroadcast.sentCount++;
                 } catch (err) {
-                    failedCount++;
+                    activeBroadcast.failedCount++;
                 }
 
-                await statusMsg.edit(`⏳ **جاري الإرسال التدريجي لجميع الأعضاء...**\n\n📊 التقدم: \`${index + 1}/${memberArray.length}\` عضو.\n✅ تم الإرسال: \`${sentCount}\` | ❌ فشل: \`${failedCount}\``);
+                await statusMsg.edit(`⏳ **جاري الإرسال التدريجي لجميع الأعضاء...**\n\n📊 التقدم: \`${index + 1}/${memberArray.length}\` عضو.\n✅ تم الإرسال: \`${activeBroadcast.sentCount}\` | ❌ فشل: \`${activeBroadcast.failedCount}\``);
                 index++;
-            }, 3000); // 3 ثوانٍ تأخير بين كل عضو لسلامة البوت
+            }, 3000); // 3 ثوانٍ لحماية البوت من حظر شركة ديسكورد
 
             dmSetup.delete(message.author.id);
             return;
@@ -430,7 +584,6 @@ client.on('interactionCreate', async interaction => {
             const guild = interaction.guild;
             const member = interaction.member;
 
-            // ⚠️ ميزة منع فتح أكثر من تذكرة للعضو في نفس الوقت
             const existingChannel = guild.channels.cache.find(c => c.name.startsWith('ticket-') && c.name.endsWith(member.user.username));
             if (existingChannel) {
                 return interaction.editReply({ content: `❌ لا يمكنك فتح تذكرة جديدة؛ لأن لديك تذكرة مفتوحة بالفعل وهي: ${existingChannel}` });
@@ -531,7 +684,6 @@ client.on('interactionCreate', async interaction => {
             const topic = interaction.channel.topic || '';
             const creatorId = topic.split('creator_id:')[1]?.split(';')[0] || '';
             
-            // حفظ أيدي المشرف المستلم وأيدي المنشئ في التوبك
             await interaction.channel.setTopic(`creator_id:${creatorId};claimed_by:${member.id};claimer_name:${member.user.username}`);
 
             const oldEmbed = interaction.message.embeds[0];
@@ -579,10 +731,8 @@ client.on('interactionCreate', async interaction => {
 
             await interaction.reply({ content: '⚠️ جاري إرسال التقييم للعضو وحذف التذكرة خلال 5 ثوانٍ...' });
 
-            // إرسال اللوج الخاص بالإغلاق
             await sendTicketLog(interaction.guild, interaction.channel.name, creatorId, claimerId, member);
 
-            // ⚠️ ميزة نظام التقييم بالنجوم: إرسال أزرار التقييم للعضو في الخاص قبل حذف الروم
             const creatorUser = await interaction.guild.members.fetch(creatorId).catch(() => null);
             if (creatorUser) {
                 const ratingEmbed = new EmbedBuilder()
@@ -617,7 +767,6 @@ client.on('interactionCreate', async interaction => {
             const rating = parseInt(parts[1]);
             const claimerName = parts[2];
 
-            // إرسال التقييم لقناة اللوج
             await sendRatingLog(interaction.guild, interaction.user, rating, claimerName);
             await interaction.followUp({ content: '✅ **شكراً جزيلاً لك على تقييمك! تم إرسال التقييم للإدارة بنجاح.**', flags: MessageFlags.Ephemeral });
         }
