@@ -15,7 +15,7 @@ const {
     Events
 } = require('discord.js');
 const express = require('express');
-const { createCanvas, loadImage } = require('@napi-rs/canvas'); // رسم بطاقات الترحيب والمغادرة فورا وبشكل مستقر
+const { createCanvas, loadImage } = require('@napi-rs/canvas'); 
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -28,13 +28,13 @@ const client = new Client({
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.GuildPresences // ضروري لجلب الأعضاء المتصلين أولاً في البرودكاست
+        GatewayIntentBits.GuildPresences 
     ]
 });
 
 // الاختصارات الأساسية
 const PREFIX = '-';
-const TICKET_SETUP_PREFIX = '-st'; 
+const CREATE_ROOM_PREFIX = '-rm'; 
 const WELCOME_SETUP_PREFIX = '-wel';
 const BYE_SETUP_PREFIX = '-bye';
 const PIC_ONLY_PREFIX = '-puc';
@@ -49,7 +49,7 @@ const tempSetup = new Map();
 const dmSetup = new Map();
 const userWarns = new Map();
 
-// تخزين قنوات الإعداد واللوج
+// قنوات الإعداد واللوج
 let welcomeChannelId = null;
 let byeChannelId = null;
 let picOnlyChannelId = null;
@@ -64,7 +64,8 @@ let activeBroadcast = null;
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 
-client.once('ready', async () => {
+// استخدام 'clientReady' لتفادي تحذيرات ديسكورد v15 المنوه عنها بالسجلات
+client.once('clientReady', async () => {
     console.log(`Bot logged in as ${client.user.tag}`);
     const commands = [
         { name: 'setup', description: 'بدء إعداد نظام التذاكر المتعدد التفاعلي' }
@@ -76,6 +77,12 @@ client.once('ready', async () => {
     } catch (e) {
         console.error(e);
     }
+});
+
+// توافقية إضافية لضمان التشغيل في كل الحالات
+client.once('ready', async () => {
+    if (client.isReady()) return;
+    console.log(`Bot logged in as ${client.user.tag}`);
 });
 
 // دالة توليد بطاقة مرسومة بالكانفا (للدخول أو الخروج)
@@ -128,7 +135,7 @@ async function generateCard(member, title, colorHex) {
     return canvas.toBuffer('image/png');
 }
 
-// دالة المساعدة المحدثة بالكامل
+// دالة المساعدة المحدثة بالكامل دون مراجع للأسئلة
 function getHelpEmbed() {
     return new EmbedBuilder()
         .setTitle('⚙️ دليل أوامر واختصارات البوت الكامل والمستقر')
@@ -341,42 +348,19 @@ client.on('messageCreate', async message => {
     if (content === PIC_ONLY_PREFIX) {
         if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) return;
         picOnlyChannelId = message.channel.id;
-        await message.reply('📸 **تم بنجاح تحويل هذه القناة إلى قناة صور وفيديوهات فقط! سيتم مسح أي نصوص عادية.**');
+        await message.reply('📸 **تم بنجاح تحويل هذه القناة إلى قناة صور فقط! سيتم تنظيف وحذف أي نصوص عادية.**');
         await message.delete().catch(() => {});
         return;
     }
 
-    // الاختصار -st لبدء الإعداد التفاعلي لبوكس التكت المتعدد مع المسح التلقائي للأسئلة وحريتك الكاملة في التسمية
-    if (content === TICKET_SETUP_PREFIX) {
-        const member = message.member;
-        if (!member.permissions.has(PermissionFlagsBits.Administrator)) {
-            return message.reply('❌ عذراً، هذا الأمر مخصص للإداريين فقط.');
-        }
-
-        const setupState = { 
-            step: 'get_count',
-            optionsCount: 0,
-            currentOptionIndex: 0,
-            options: [], 
-            imageUrl: null,
-            categoryId: null,
-            messagesToDelete: [] 
-        };
-        tempSetup.set(message.author.id, setupState);
-
-        const prompt = await message.channel.send(`${message.author}, ⚙ *بدء إعداد بوكس تذاكر مخصص بالكامل*\n\n**الخطوة [1]:** كم عدد الأقسام (الخيارات) التي تريد وضعها في هذا البوكس؟ (اكتب رقماً من **1 إلى 10**):`);
-        setupState.messagesToDelete.push(message.id, prompt.id);
-        return;
-    }
-
-    // ميزة برودكاست الخاص فائق السرعة والآمن بالكامل لتجنب الباند (-dm) - متصل أولا ثم غير متصل
+    // البرودكاست الخاص فائق السرعة والآمن بالكامل لتجنب الباند (-dm) - متصل أولا ثم غير متصل
     if (content === DM_BROADCAST_PREFIX) {
         if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) return;
 
         const broadcastState = { step: 1, title: null, description: null, imageUrl: null, messagesToDelete: [] };
         dmSetup.set(message.author.id, broadcastState);
 
-        const prompt = await message.channel.send(`${message.author}, 📢 **بدء إعداد برودكاست الخاص الذكي والآمن (أونلاين أولاً)**\n\n**الخطوة [1/3]:** يرجى كتابة **عنوان** رسالة البرودكاست:`);
+        const prompt = await message.channel.send(`${message.author}, 📢 **بدء إعداد برودكاست الخاص الآمن**\n\n**الخطوة [1/3]:** يرجى كتابة **عنوان** رسالة البرودكاست:`);
         broadcastState.messagesToDelete.push(message.id, prompt.id);
         return;
     }
@@ -414,7 +398,7 @@ client.on('messageCreate', async message => {
             const desc = message.content.trim();
             state.options[state.currentOptionIndex].description = desc;
             state.step = 'get_option_role';
-            const nextPrompt = await message.reply(`✅ تم حفظ الوصف.\n\n👤 يرجى كتابة **أيدي الرتبة (Role ID)** المسؤولة عن استلام تذاكر هذا القسم:`);
+            const nextPrompt = await message.reply(`✅ تم حفظ الوصف.\n\n👤 يرجى كتابة **أيدي الرتبة (Role ID)** المسؤولة عن تذاكر هذا القسم:`);
             state.messagesToDelete.push(nextPrompt.id);
             return;
         }
@@ -477,7 +461,7 @@ client.on('messageCreate', async message => {
             const uniqueId = Date.now().toString().slice(-4);
             const selectMenu = new StringSelectMenuBuilder()
                 .setCustomId(`multi_t_menu_${uniqueId}_${state.categoryId || 'none'}`)
-                .setPlaceholder('الرجاء اختيار قسم مناسب لفتح التذكرة...');
+                .setPlaceholder('الرجاء اختيار قسم لفتح التذكرة...');
 
             state.options.forEach(opt => {
                 selectMenu.addOptions(
@@ -540,13 +524,12 @@ client.on('messageCreate', async message => {
                 }
             }, 1000);
 
-            const statusMsg = await message.channel.send('⏳ **جاري جلب الأعضاء وتقسيمهم (الأونلاين أولاً)...**');
+            const statusMsg = await message.channel.send('⏳ **جاري بدء عملية البرودكاست التدريجي والآمن لتجنب الباند من ديسكورد...**');
 
-            // جلب كامل الأعضاء مع حالات الاتصال (Presences)
             const members = await message.guild.members.fetch({ withPresences: true });
             const allMembers = Array.from(members.values()).filter(m => !m.user.bot);
 
-            // تقسيم الأعضاء بناءً على حالة الاتصال (Online/Idle/Dnd) أولاً ثم Offline
+            // فرز الأعضاء (أونلاين أولاً ثم أوفلاين) لسرعة وصول الرسائل وزيادة التفاعل
             const onlineMembers = allMembers.filter(m => m.presence && m.presence.status !== 'offline');
             const offlineMembers = allMembers.filter(m => !m.presence || m.presence.status === 'offline');
 
@@ -560,7 +543,6 @@ client.on('messageCreate', async message => {
                 if (index >= sortedMembers.length) {
                     clearInterval(interval);
                     await statusMsg.edit(`✅ **اكتمل البرودكاست بنجاح!**\n\n📬 تم الإرسال إلى: \`${sentCount}\` عضو.\n❌ فشل الإرسال لـ: \`${failedCount}\` عضو (بسبب إغلاق الخاص).`);
-                    await sendBroadcastLog(message.guild, message.author, state.title, sentCount, failedCount);
                     return;
                 }
 
@@ -586,14 +568,14 @@ client.on('messageCreate', async message => {
                 const progressType = index < onlineMembers.length ? '🟢 جاري إرسال المتصلين (Online)' : '⚫ جاري إرسال غير المتصلين (Offline)';
                 await statusMsg.edit(`⏳ **${progressType}...**\n\n📊 التقدم الحالي: \`${index + 1}/${sortedMembers.length}\` عضو.\n✅ تم الإرسال: \`${sentCount}\` | ❌ فشل: \`${failedCount}\``);
                 index++;
-            }, 3000); // إرسال تدريجي بمعدل رسالة كل 3 ثوانٍ لحماية البوت من الباند
+            }, 2500); 
 
             dmSetup.delete(message.author.id);
             return;
         }
     }
 
-    // حماية روم الصور فقط ومسح النصوص وتنبيه العضو واللوج التلقائي للتخريب
+    // 8. حماية روم الصور فقط ومسح النصوص وتنبيه العضو واللوج التلقائي للتخريب
     if (picOnlyChannelId && message.channel.id === picOnlyChannelId) {
         const hasAttachment = message.attachments.size > 0;
         const hasEmbedImage = message.embeds.some(e => e.image || e.thumbnail);
@@ -626,7 +608,7 @@ client.on('messageCreate', async message => {
 });
 
 client.on('interactionCreate', async interaction => {
-    // فتح تكت من القوائم المنسدلة المتعددة المستقلة والمحفوظ فيها معلومات القسم والرتب
+    // فتح تكت من القوائم المنسدلة المتعددة المستقلة
     if (interaction.isStringSelectMenu()) {
         if (interaction.customId.startsWith('multi_t_menu_')) {
             await interaction.deferReply({ flags: MessageFlags.Ephemeral });
