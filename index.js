@@ -23,7 +23,7 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
-// ==================== إعداد وتوصيل قاعدة بيانات MongoDB ====================
+// ==================== إعداد وتوصيل قاعدة بيانات MongoDB للتحقق ====================
 const MONGO_URI = process.env.MONGO_URI; 
 
 mongoose.connect(MONGO_URI)
@@ -38,22 +38,6 @@ const UserSchema = new mongoose.Schema({
 });
 
 const VerifiedUser = mongoose.model('VerifiedUser', UserSchema);
-
-// نظام حفظ عداد التذاكر التراكمي لترقيم التكتات تصاعدياً
-const CounterSchema = new mongoose.Schema({
-    id: { type: String, required: true, unique: true },
-    seq: { type: Number, default: 0 }
-});
-const Counter = mongoose.model('Counter', CounterSchema);
-
-async function getNextSequence(name) {
-    const counter = await Counter.findOneAndUpdate(
-        { id: name },
-        { $inc: { seq: 1 } },
-        { new: true, upsert: true }
-    );
-    return counter.seq;
-}
 // ====================================================================
 
 const tempSetup = new Map(); 
@@ -173,8 +157,8 @@ const PULL_MEMBERS_PREFIX = '-pull';
 const LOG_VERIFY_PREFIX = '-tv';      
 const LIVE_COUNTER_PREFIX = '-lc';    
 
-const TICKET_SETUP_PREFIX = '-st'; 
-const LOG_TICKET_PREFIX = '-lgt';  
+const TICKET_SETUP_PREFIX = '-st'; // إعداد التذاكر المتعددة
+const LOG_TICKET_PREFIX = '-lgt';  // لوج التذاكر المغلّقة
 
 const DM_BROADCAST_PREFIX = '-t';      
 const DM_VERIFY_PREFIX = '-vt';         
@@ -233,7 +217,6 @@ function resetInactivityTimer(channel, memberId) {
         clearTimeout(ticketInactivityTimers.get(channel.id));
     }
 
-    // 45 دقيقة بالملي ثانية = 45 * 60 * 1000 = 2,700,000 مللي ثانية
     const timer = setTimeout(async () => {
         const member = channel.guild.members.cache.get(memberId);
         if (member) {
@@ -295,7 +278,7 @@ async function sendRatingLog(guild, creator, rating, claimerName) {
     }
 }
 
-// دالة تنفيذ الإغلاق الفوري للتكت لتفادي التكرار
+// دالة تنفيذ الإغلاق الفوري للتكت
 async function executeTicketClose(channel, closerUser) {
     const topic = channel.topic || '';
     const creatorId = topic.split('creator_id:')[1]?.split(';')[0] || '';
@@ -320,17 +303,15 @@ client.on('messageCreate', async message => {
     const content = message.content.trim();
     const isAuthorized = message.member.permissions.has(PermissionFlagsBits.Administrator) || message.member.roles.cache.some(r => r.name === 'Ownerv');
 
-    // ==================== ميزة الرد التلقائي الذكي ومراقبة خمول وكلام التذاكر ====================
+    // ==================== ميزة الرد التلقائي الذكي بداخل التذاكر المفتوحة ====================
     if (message.channel.name.startsWith('ticket-')) {
         const topic = message.channel.topic || '';
         const creatorId = topic.split('creator_id:')[1]?.split(';')[0] || '';
         
-        // إعادة تنشيط مؤقت الخمول (45 دقيقة) فور ورود أي رسالة جديدة من العضو
         if (message.author.id === creatorId) {
             resetInactivityTimer(message.channel, creatorId);
         }
 
-        // الاستماع لأوامر الإغلاق النصية من العضو
         if (message.author.id === creatorId && (content === 'سكرها' || content === 'اغلقها' || content === 'أغلقها')) {
             return await executeTicketClose(message.channel, message.author);
         }
@@ -828,7 +809,7 @@ client.on('messageCreate', async message => {
                 }
 
                 const progressType = index < onlineMembers.length ? '🟢 جاري إرسال المتصلين (Online)' : '⚫ جاري إرسال غير المتصلين (Offline)';
-                await statusMsg.edit(`⏳ **${progressType}...**\n\n📊 التقدم الحالي: \`${index + 1}/${sortedMembers.length}\` عضو.\n✅ تم الإرسال: \`${sentCount}\` | ❌ فشل: \`${failedCount}\``);
+                await statusMsg.edit(`⏳ **${progressType}...**\n\n📊 التقدم الحالي: \`${index + 1}/${sortedMembers.length}\` عضو.\n✅ تم الإدانة: \`${sentCount}\` | ❌ فشل: \`${failedCount}\``);
                 index++;
             }, 2500); 
 
@@ -877,7 +858,7 @@ async function handleConfigSetup(message, prefix, name) {
 }
 
 client.on('interactionCreate', async interaction => {
-    // فتح تكت من القوائم المنسدلة المتعددة المستقلة مع الترقيم التلقائي
+    // فتح تكت من القوائم المنسدلة المتعددة المستقلة والمحفوظ فيها معلومات القسم والرتب مع الترقيم التلقائي بالثواني
     if (interaction.isStringSelectMenu()) {
         if (interaction.customId.startsWith('multi_t_menu_')) {
             await interaction.deferReply({ flags: MessageFlags.Ephemeral });
@@ -909,12 +890,11 @@ client.on('interactionCreate', async interaction => {
             }
 
             try {
-                // ميزة ترقيم التذاكر تلقائياً (تصاعدياً) بدلاً من تسميتها باسم العضو
-                const ticketNumber = await getNextSequence('tickets');
-                const paddedNumber = String(ticketNumber).padStart(4, '0'); // لتنسيق الأرقام مثل 0001, 0002...
+                // توليد رقم تذكرة عشوائي مميز ومستقل بالثواني لمنع توقف داتابيس المونجو دي بي تماماً
+                const uniqueTicketNum = Math.floor(1000 + Math.random() * 9000); // توليد رقم فخم مثل 4312, 8529...
 
                 const channel = await guild.channels.create({
-                    name: `ticket-${paddedNumber}`, // الروم يظهر مرقماً بدقة
+                    name: `ticket-${uniqueTicketNum}`, // تسمية الروم بالرقم العشوائي المطور
                     type: ChannelType.GuildText,
                     parent: targetCategoryId,
                     permissionOverwrites: permissionOverwrites
@@ -922,7 +902,7 @@ client.on('interactionCreate', async interaction => {
 
                 await channel.setTopic(`creator_id:${member.id}`);
 
-                // بدء تشغيل مؤقت الخمول (45 دقيقة) للتذكرة المفتوحة تلقائياً لمنع الهجر
+                // بدء تشغيل مؤقت الخمول (45 دقيقة) للتذكرة المفتوحة تلقائياً
                 resetInactivityTimer(channel, member.id);
 
                 const welcomeEmbed = new EmbedBuilder()
