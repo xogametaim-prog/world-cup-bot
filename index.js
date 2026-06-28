@@ -2,39 +2,59 @@ const {
     Client, 
     GatewayIntentBits, 
     ActionRowBuilder, 
+    StringSelectMenuBuilder, 
+    StringSelectMenuOptionBuilder, 
     EmbedBuilder, 
     ButtonBuilder, 
     ButtonStyle, 
+    PermissionFlagsBits,
+    ChannelType,
     REST,
     Routes,
-    PermissionFlagsBits,
+    MessageFlags,
     Events
 } = require('discord.js');
 const express = require('express');
-const axios = require('axios'); // حزمة لإتمام طلبات الـ OAuth2 من ديسكورد وسحب الأعضاء
+const axios = require('axios');
+const mongoose = require('mongoose'); // ربط مكتبة المونجو دي بي للحفظ الدائم للأعضاء
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// قاعدة بيانات مؤقتة لتخزين الـ Access Tokens الخاصة بالأعضاء الموثقين
-const verifiedUsers = new Map(); 
-const tempSetup = new Map(); // لتتبع خطوة إدخال الرابط تفاعلياً
-
 app.use(express.json());
 
-app.get('/', (req, res) => res.send('OAuth2 Verify Bot is Running!'));
+// ==================== إعداد وتوصيل قاعدة بيانات MongoDB ====================
+const MONGO_URI = process.env.MONGO_URI; 
 
-// الرابط البرمجي (Callback) لمعالجة التحقق وإعطاء الرتبة تلقائياً
+mongoose.connect(MONGO_URI)
+    .then(() => console.log('Successfully connected to MongoDB Atlas!'))
+    .catch(err => console.error('Failed to connect to MongoDB:', err));
+
+// إنشاء الهيكل البرمجي (Schema) لحفظ بيانات الأعضاء الموثقين بشكل دائم للأبد
+const UserSchema = new mongoose.Schema({
+    userId: { type: String, required: true, unique: true },
+    accessToken: { type: String, required: true },
+    username: { type: String },
+    guildId: { type: String }
+});
+
+const VerifiedUser = mongoose.model('VerifiedUser', UserSchema);
+// ====================================================================
+
+const tempSetup = new Map(); 
+
+app.get('/', (req, res) => res.send('OAuth2 Verify Bot with MongoDB is Running!'));
+
+// استقبال التحقق وحفظ العضو تلقائياً بداخل داتابيس المونجو صامتاً
 app.get('/callback', async (req, res) => {
     const code = req.query.code;
-    const guildId = req.query.state; // نستخدم الـ state لتمرير أيدي السيرفر ديناميكياً وإعطاء الرتبة
+    const guildId = req.query.state; 
     
     if (!code) {
         return res.send('<h1>❌ Verification Failed. Please try again.</h1>');
     }
 
     try {
-        // 1. تبديل الـ Code بـ Access Token من ديسكورد
         const tokenResponse = await axios.post('https://discord.com/api/v10/oauth2/token', new URLSearchParams({
             client_id: process.env.CLIENT_ID,
             client_secret: process.env.CLIENT_SECRET, 
@@ -47,7 +67,6 @@ app.get('/callback', async (req, res) => {
 
         const accessToken = tokenResponse.data.access_token;
 
-        // 2. جلب معلومات حساب العضو لمعرفة أيدي حسابه
         const userResponse = await axios.get('https://discord.com/api/v10/users/@me', {
             headers: { Authorization: `Bearer ${accessToken}` }
         });
@@ -55,10 +74,31 @@ app.get('/callback', async (req, res) => {
         const userId = userResponse.data.id;
         const username = userResponse.data.username;
 
-        // 3. تخزين العضو والـ Access Token للسحب لاحقاً
-        verifiedUsers.set(userId, accessToken);
+        // الحفظ التلقائي والدائم داخل قاعدة البيانات لعدم الفقدان عند عمل الـ Deploy
+        await VerifiedUser.findOneAndUpdate(
+            { userId: userId },
+            { accessToken: accessToken, username: username, guildId: guildId || 'Unknown' },
+            { upsert: true, new: true }
+        );
 
-        // 4. منح رتبة Verified للعضو بداخل السيرفر تلقائياً وصامتاً بعد نجاح التحقق
+        // إرسال اللوج المخصص في الروم المحددة (-tv)
+        if (logVerifyChannelId) {
+            const logChannel = client.channels.cache.get(logVerifyChannelId);
+            if (logChannel) {
+                const logEmbed = new EmbedBuilder()
+                    .setTitle('✅ عضو جديد أتم التحقق الذاتي')
+                    .setColor('#2ecc71')
+                    .addFields(
+                        { name: '👤 العضو', value: `<@${userId}> | \`${username}\``, inline: true },
+                        { name: '🆔 أيدي الحساب', value: `\`${userId}\``, inline: true },
+                        { name: '📺 السيرفر المصدر', value: guildId ? `\`أيدي: ${guildId}\`` : '`غير معروف`', inline: true }
+                    )
+                    .setTimestamp();
+                await logChannel.send({ embeds: [logEmbed] }).catch(() => {});
+            }
+        }
+
+        // منح رتبة Verified تلقائياً وصامتاً للعضو بعد نجاح التحقق بداخل السيرفر الحالي
         if (guildId) {
             const guild = client.guilds.cache.get(guildId);
             if (guild) {
@@ -66,7 +106,7 @@ app.get('/callback', async (req, res) => {
                 if (member) {
                     const verifiedRole = guild.roles.cache.find(r => r.name === 'Verified');
                     if (verifiedRole) {
-                        await member.roles.add(verifiedRole).catch(err => console.error('Failed to add verified role:', err));
+                        await member.roles.add(verifiedRole).catch(err => console.error(err));
                     }
                 }
             }
@@ -74,7 +114,7 @@ app.get('/callback', async (req, res) => {
 
         res.send(`<h1>✅ Verified Successfully! Thank you ${username}. You can now close this tab.</h1>`);
     } catch (error) {
-        console.error('Error during OAuth2 callback:', error.response ? error.response.data : error.message);
+        console.error('Error during callback:', error.response ? error.response.data : error.message);
         res.send('<h1>❌ Error during verification.</h1>');
     }
 });
@@ -90,56 +130,50 @@ const client = new Client({
     ]
 });
 
-// الاختصارات الحصرية لنظام التحقق والسحب
-const VERIFY_SETUP_PREFIX = '-vr';    // إرسال رسالة التحقق مع الزر
-const COUNT_VERIFY_PREFIX = '-vf';    // فحص إجمالي عدد الأعضاء الموثقين
-const PULL_MEMBERS_PREFIX = '-pull';  // أمر سحب الأعضاء الفوري للسيرفر المحدد
+// الاختصارات والأوامر الأساسية المحددة من قبلك
+const VERIFY_SETUP_PREFIX = '-vr';    // إعداد بوكس التحقق والزر تفاعلياً بالسؤال عن الرابط
+const COUNT_VERIFY_PREFIX = '-vf';    // فحص عدد الموافقين الإجمالي
+const PULL_MEMBERS_PREFIX = '-pull';  // سحب وإدخال الأعضاء للسيرفر المحدد
+const LOG_VERIFY_PREFIX = '-tv';      // تحديد روم لوج التحقق الجديد
 
 let verifyUrl = 'https://discord.com/api/oauth2/authorize...'; 
+let logVerifyChannelId = null; // لتخزين قناة لوج التحقق
 
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 
-// دالة تفاعلية لإنشاء رتب Verified و Ownerv تلقائياً وصامتاً داخل السيرفر
 async function createVerifyRoles(guild) {
     try {
-        // إنشاء رتبة Verified صامتاً إذا لم تكن موجودة
         let verifiedRole = guild.roles.cache.find(r => r.name === 'Verified');
         if (!verifiedRole) {
-            verifiedRole = await guild.roles.create({
+            await guild.roles.create({
                 name: 'Verified',
-                color: '#2ecc71', // اللون الأخضر الجمالي للتحقق
+                color: '#2ecc71',
                 reason: 'Auto-created role for verified users'
             });
-            console.log(`Created 'Verified' role in guild: ${guild.name}`);
         }
 
-        // إنشاء رتبة Ownerv صامتاً للتحكم إذا لم تكن موجودة
         let ownerRole = guild.roles.cache.find(r => r.name === 'Ownerv');
         if (!ownerRole) {
             await guild.roles.create({
                 name: 'Ownerv',
-                color: '#e74c3c', // اللون الأحمر للإدارة والتحكم
+                color: '#e74c3c',
                 permissions: [PermissionFlagsBits.Administrator],
                 reason: 'Auto-created control role for verification administrators'
             });
-            console.log(`Created 'Ownerv' role in guild: ${guild.name}`);
         }
     } catch (error) {
-        console.error(`Failed to create roles in ${guild.name}:`, error);
+        console.error(error);
     }
 }
 
 client.once('ready', async () => {
     console.log(`Verify Bot is Online as ${client.user.tag}`);
-    
-    // التحقق التلقائي والصامت لجميع السيرفرات المتصل بها البوت لإنشاء الرتب فور إقلاعه
     client.guilds.cache.forEach(async (guild) => {
         await createVerifyRoles(guild);
     });
 });
 
-// إنشاء الرتب صامتاً وتلقائياً فور انضمام البوت لأي سيرفر جديد
 client.on(Events.GuildCreate, async (guild) => {
     await createVerifyRoles(guild);
 });
@@ -148,17 +182,14 @@ client.on('messageCreate', async message => {
     if (message.author.bot) return;
 
     const content = message.content.trim();
-
-    // التحقق من أن المستخدم يملك صلاحية الإدارة العليا أو رتبة Ownerv المخصصة لتشغيل الأوامر
     const isAuthorized = message.member.permissions.has(PermissionFlagsBits.Administrator) || message.member.roles.cache.some(r => r.name === 'Ownerv');
 
-    // 1. عند كتابة الاختصار -vr لبدء السؤال التفاعلي عن الرابط
+    // 1. الإعداد التفاعلي لبوكس التحقق والزر بالسؤال عن الرابط
     if (content === VERIFY_SETUP_PREFIX) {
         if (!isAuthorized) {
             return message.reply('❌ عذراً، هذا الأمر مخصص للإدارة أو أصحاب رتبة **Ownerv** فقط.');
         }
 
-        // إنشاء حالة الإعداد التفاعلي وحفظ الرسائل لحذفها لاحقاً
         const setupState = { step: 'get_url', messagesToDelete: [] };
         tempSetup.set(message.author.id, setupState);
 
@@ -167,7 +198,6 @@ client.on('messageCreate', async message => {
         return;
     }
 
-    // تتبع إجابة المستخدم وحفظ الرابط وإرسال البوكس تلقائياً
     if (tempSetup.has(message.author.id)) {
         const state = tempSetup.get(message.author.id);
         state.messagesToDelete.push(message.id);
@@ -182,7 +212,6 @@ client.on('messageCreate', async message => {
 
             verifyUrl = inputUrl;
             
-            // ربط أيدي السيرفر الحالي بالرابط ديناميكياً لإعطاء رتبة Verified تلقائياً بعد نجاح التحقق
             const finalUrl = `${verifyUrl}&state=${message.guild.id}`;
 
             const embed = new EmbedBuilder()
@@ -198,10 +227,8 @@ client.on('messageCreate', async message => {
 
             const row = new ActionRowBuilder().addComponents(verifyButton);
 
-            // إرسال بوكس التحقق النهائي في الروم
             await message.channel.send({ embeds: [embed], components: [row] });
 
-            // تنظيف وحذف رسائل الإعداد الفوري لشات نظيف
             setTimeout(async () => {
                 for (const msgId of state.messagesToDelete) {
                     await message.channel.messages.delete(msgId).catch(() => {});
@@ -213,70 +240,103 @@ client.on('messageCreate', async message => {
         }
     }
 
-    // 2. فحص عدد الموثقين بداخل قاعدة البيانات من جميع السيرفرات
-    if (content === COUNT_VERIFY_PREFIX) {
+    // 2. تعيين قناة لوج التحقق (-tv [#القناة])
+    if (content.startsWith(LOG_VERIFY_PREFIX)) {
         if (!isAuthorized) return;
-        await message.reply(`📊 **إحصائية التحقق المطور:**\nالعدد الكلي للأعضاء الموثقين والمخزنين والجاهزين للسحب هو: \`${verifiedUsers.size}\` عضو.`);
+
+        const args = content.slice(LOG_VERIFY_PREFIX.length).trim().split(/ +/);
+        const channelMention = message.mentions.channels.first();
+        const inputId = args[0];
+
+        const targetChannel = channelMention || message.guild.channels.cache.get(inputId);
+
+        if (!targetChannel || targetChannel.type !== ChannelType.GuildText) {
+            return message.reply('❌ يرجى منشن قناة نصية صحيحة أو وضع الأيدي لتعيين قناة لوج التحقق:');
+        }
+
+        logVerifyChannelId = targetChannel.id;
+        await message.reply(`✅ **تم بنجاح تعيين قناة لوج التحقق على: ${targetChannel}**`);
+        await message.delete().catch(() => {});
         return;
     }
 
-    // 3. السحب الفوري والسريع لجميع الموثقين إلى السيرفر المحدد (-pull [Server ID])
+    // 3. فحص عدد الموثقين الإجمالي المخزن في MongoDB
+    if (content === COUNT_VERIFY_PREFIX) {
+        if (!isAuthorized) return;
+        try {
+            const count = await VerifiedUser.countDocuments();
+            await message.reply(`📊 **إحصائية التحقق المطور (MongoDB):**\nالعدد الكلي للأعضاء الموثقين المحفوظين والجاهزين للسحب هو: \`${count}\` عضو.`);
+        } catch (err) {
+            console.error(err);
+            await message.reply('❌ حدث خطأ أثناء محاولة جلب الإحصائية من قاعدة البيانات.');
+        }
+        return;
+    }
+
+    // 4. سحب الأعضاء الموثقين من قاعدة البيانات وإدخالهم تلقائياً للسيرفر المستهدف (-pull [أيدي السيرفر])
     if (content.startsWith(PULL_MEMBERS_PREFIX)) {
         if (!isAuthorized) return;
 
         const args = content.slice(PULL_MEMBERS_PREFIX.length).trim().split(/ +/);
         const targetGuildId = args[0] || message.guild.id; 
 
-        if (verifiedUsers.size === 0) {
-            return message.reply('❌ لا يوجد أي أعضاء موثقين ومسجلين بداخل قاعدة بيانات البوت حالياً لسحبهم.');
-        }
+        try {
+            const totalCount = await VerifiedUser.countDocuments();
 
-        const statusMsg = await message.channel.send(`⏳ **جاري بدء عملية سحب وإدخال \`${verifiedUsers.size}\` عضو إلى السيرفر المحدد...**`);
-
-        let successCount = 0;
-        let failCount = 0;
-        let alreadyInCount = 0;
-
-        const targetGuild = client.guilds.cache.get(targetGuildId);
-        if (!targetGuild) {
-            return statusMsg.edit('❌ البوت ليس موجوداً بداخل السيرفر المستهدف لتطبيق السحب يرجى دعوته أولاً للسيرفر الآخر.');
-        }
-
-        const userArray = Array.from(verifiedUsers.entries());
-
-        let index = 0;
-        const interval = setInterval(async () => {
-            if (index >= userArray.length) {
-                clearInterval(interval);
-                await statusMsg.edit(`✅ **اكتملت عملية سحب الأعضاء بنجاح!**\n\n📬 الأعضاء الذين تم إدخالهم: \`${successCount}\` عضو.\n🔄 كانوا موجودين بالسيرفر بالفعل: \`${alreadyInCount}\` عضو.\n❌ فشل سحبهم (انتهت صلاحية الـ Token): \`${failCount}\` عضو.`);
-                return;
+            if (totalCount === 0) {
+                return message.reply('❌ لا يوجد أي أعضاء موثقين مسجلين في قاعدة البيانات حالياً لسحبهم.');
             }
 
-            const [userId, accessToken] = userArray[index];
+            const targetGuild = client.guilds.cache.get(targetGuildId);
+            if (!targetGuild) {
+                return message.reply('❌ البوت ليس موجوداً بداخل السيرفر المستهدف، يرجى دعوة البوت أولاً.');
+            }
 
-            const isMember = targetGuild.members.cache.has(userId);
-            if (isMember) {
-                alreadyInCount++;
-            } else {
-                try {
-                    await axios.put(`https://discord.com/api/v10/guilds/${targetGuildId}/members/${userId}`, {
-                        access_token: accessToken
-                    }, {
-                        headers: {
-                            Authorization: `Bot ${TOKEN}`,
-                            'Content-Type': 'application/json'
-                        }
-                    });
-                    successCount++;
-                } catch (err) {
-                    failCount++;
+            const statusMsg = await message.channel.send(`⏳ **جاري جلب الأعضاء وبدء سحب وإدخال \`${totalCount}\` عضو إلى السيرفر المستهدف...**`);
+
+            let successCount = 0;
+            let failCount = 0;
+            let alreadyInCount = 0;
+
+            const allVerifiedUsers = await VerifiedUser.find();
+
+            let index = 0;
+            const interval = setInterval(async () => {
+                if (index >= allVerifiedUsers.length) {
+                    clearInterval(interval);
+                    await statusMsg.edit(`✅ **اكتملت عملية سحب الأعضاء بنجاح!**\n\n📬 تم إدخال: \`${successCount}\` عضو.\n🔄 كانوا موجودين بالسيرفر سابقاً: \`${alreadyInCount}\` عضو.\n❌ فشل سحبهم (انتهى توكن حسابهم): \`${failCount}\` عضو.`);
+                    return;
                 }
-            }
 
-            await statusMsg.edit(`⏳ **جاري السحب الفوري للأعضاء...**\n\n📊 التقدم الحالي: \`${index + 1}/${userArray.length}\` عضو.\n✅ تم الإدخال: \`${successCount}\` | 🔄 موجود سابقاً: \`${alreadyInCount}\` | ❌ فشل: \`${failCount}\``);
-            index++;
-        }, 1200); 
+                const userData = allVerifiedUsers[index];
+                const isMember = targetGuild.members.cache.has(userData.userId);
 
+                if (isMember) {
+                    alreadyInCount++;
+                } else {
+                    try {
+                        await axios.put(`https://discord.com/api/v10/guilds/${targetGuildId}/members/${userData.userId}`, {
+                            access_token: userData.accessToken
+                        }, {
+                            headers: {
+                                Authorization: `Bot ${TOKEN}`,
+                                'Content-Type': 'application/json'
+                            }
+                        });
+                        successCount++;
+                    } catch (err) {
+                        failCount++;
+                    }
+                }
+
+                await statusMsg.edit(`⏳ **جاري السحب الفوري للأعضاء...**\n\n📊 التقدم الحالي: \`${index + 1}/${allVerifiedUsers.length}\` عضو.\n✅ تم الإدخال: \`${successCount}\` | 🔄 موجود سابقاً: \`${alreadyInCount}\` | ❌ فشل: \`${failCount}\``);
+                index++;
+            }, 1200); 
+
+        } catch (err) {
+            console.error(err);
+            await message.reply('❌ حدث خطأ غير متوقع أثناء محاولة بدء عملية السحب.');
+        }
         return;
     }
 });
