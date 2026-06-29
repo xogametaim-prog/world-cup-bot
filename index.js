@@ -2,6 +2,8 @@ const {
     Client, 
     GatewayIntentBits, 
     ActionRowBuilder, 
+    StringSelectMenuBuilder, 
+    StringSelectMenuOptionBuilder, 
     EmbedBuilder, 
     ButtonBuilder, 
     ButtonStyle, 
@@ -9,7 +11,8 @@ const {
     Routes,
     PermissionFlagsBits,
     Events,
-    ChannelType
+    ChannelType,
+    MessageFlags
 } = require('discord.js');
 const express = require('express');
 const axios = require('axios');
@@ -185,7 +188,8 @@ async function createVerifyRoles(guild) {
     }
 }
 
-client.once('ready', async () => {
+// استخدام الحدث الرسمي الجديد لتفادي التعارض البرمجي
+client.once(Events.ClientReady, async () => {
     console.log(`Verify & Broadcast Bot is Online as ${client.user.tag}`);
     client.guilds.cache.forEach(async (guild) => {
         await createVerifyRoles(guild);
@@ -478,7 +482,6 @@ client.on('messageCreate', async message => {
         }
     }
 
-    // 7. برودكاست رابط وزر التحقق الذاتي بالخاص مع منشن تلقائي (أونلاين أولاً ثم أوفلاين) - الاختصار -vt
     if (content === DM_VERIFY_PREFIX) {
         if (!isAuthorized) return;
 
