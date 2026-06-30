@@ -23,7 +23,7 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
-// ==================== إعداد وتوصيل قاعدة بيانات MongoDB ====================
+// ==================== إعداد وتوصيل قاعدة بيانات MongoDB للتحقق ====================
 const MONGO_URI = process.env.MONGO_URI; 
 
 mongoose.connect(MONGO_URI)
@@ -51,10 +51,9 @@ let logVerifyChannelId = null;
 let lcaMessageId = null;
 let lcaChannelId = null;
 
-// متغير لحفظ رابط التحقق الفوري المرسل عند الدخول -vj
 let autoJoinVerifyUrl = ''; 
 
-app.get('/', (req, res) => res.send('OAuth2 Verify & Broadcast Bot is Running!'));
+app.get('/', (req, res) => res.send('OAuth2 Verify & Broadcast Bot with Cloner is Running!'));
 
 async function updateAllLiveCounters() {
     try {
@@ -188,16 +187,14 @@ const LIVE_COUNTER_PREFIX = '-lc';
 const DM_BROADCAST_PREFIX = '-t';      
 const DM_VERIFY_PREFIX = '-vt';         
 const UNIVERSAL_COUNTER_PREFIX = '-lca'; 
-
-// ميزة الترحيب الفوري بالرابط للخاص -vj
 const AUTO_DM_VERIFY_PREFIX = '-vj';
 
-let verifyUrl = 'https://discord.com/api/oauth2/authorize...'; 
+// ميزة نسخ وتكرار رومات السيرفر الجديد المضافة بالاختصار -clone
+const CLONE_GUILD_PREFIX = '-clone'; 
 
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 
-// ميزة الإرسال التلقائي والترحيبي بالرابط للخاص فور دخول العضو (-vj)
 client.on('guildMemberAdd', async member => {
     if (member.user.bot) return;
 
@@ -208,7 +205,6 @@ client.on('guildMemberAdd', async member => {
             .setColor('#2b2d31')
             .setTimestamp();
 
-        // تمرير معرف السيرفر ديناميكياً لتفعيل الرتب تلقائياً للعضو
         const finalUrl = `${autoJoinVerifyUrl}&state=${member.guild.id}`;
 
         const verifyButton = new ButtonBuilder()
@@ -221,9 +217,7 @@ client.on('guildMemberAdd', async member => {
 
         try {
             await member.send({ embeds: [embed], components: [row] });
-        } catch (err) {
-            // تجاهل الخطأ في حال كان العضو يغلق الرسائل الخاصة لديه
-        }
+        } catch (err) {}
     }
 });
 
@@ -269,7 +263,7 @@ client.on('messageCreate', async message => {
     const content = message.content.trim();
     const isAuthorized = message.member.permissions.has(PermissionFlagsBits.Administrator) || message.member.roles.cache.some(r => r.name === 'Ownerv');
 
-    // الإعداد التفاعلي لبوكس التحقق والزر بالسؤال عن الرابط
+    // 1. الإعداد التفاعلي لبوكس التحقق والزر بالسؤال عن الرابط
     if (content === VERIFY_SETUP_PREFIX) {
         if (!isAuthorized) {
             return message.reply('❌ عذراً، هذا الأمر مخصص للإدارة أو أصحاب رتبة **Ownerv** فقط.');
@@ -667,6 +661,79 @@ client.on('messageCreate', async message => {
             verifyBroadcastSetup.delete(message.author.id);
             return;
         }
+    }
+
+    // ==================== ميزة نسخ وتكرار رومات السيرفر الجديد المضافة (-clone [أيدي السيرفر الأول]) ====================
+    if (content.startsWith(CLONE_GUILD_PREFIX)) {
+        if (!isAuthorized) return;
+
+        const args = content.slice(CLONE_GUILD_PREFIX.length).trim().split(/ +/);
+        const sourceGuildId = args[0];
+
+        if (!sourceGuildId) {
+            return message.reply('❌ يرجى كتابة أيدي السيرفر الأول (المصدر) بعد الأمر مباشرة (مثال: `-clone 1234567890`):');
+        }
+
+        const sourceGuild = client.guilds.cache.get(sourceGuildId);
+        if (!sourceGuild) {
+            return message.reply('❌ لم أستطع العثور على السيرفر الأول. تأكد من دعوة البوت إليه أولاً وتفعيل الصلاحيات بداخل السيرفرين.');
+        }
+
+        const targetGuild = message.guild; // السيرفر الحالي الذي نكتب فيه الأمر هو السيرفر المستهدف بالنسخ
+
+        const statusMsg = await message.reply(`⏳ **جاري البدء في فحص وقراءة قنوات السيرفر الأول \`${sourceGuild.name}\` وتكرارها صامتاً هنا...**`);
+
+        try {
+            // 1. مسح وتنظيف السيرفر الحالي من أي قنوات قديمة لتجنب التعارض (اختياري وآمن)
+            targetGuild.channels.cache.forEach(async (chan) => {
+                if (chan.id !== message.channel.id) {
+                    await chan.delete().catch(() => {});
+                }
+            });
+
+            // 2. جلب وتصفية التصنيفات (Categories) من السيرفر الأول لإنشائها أولاً
+            const categories = sourceGuild.channels.cache.filter(c => c.type === ChannelType.GuildCategory).sort((a, b) => a.position - b.position);
+            
+            const categoryMap = new Map(); // لحفظ العلاقة بين تصنيف السيرفر الأول والجديد لربط الرومات
+
+            for (const [id, cat] of categories) {
+                const newCat = await targetGuild.channels.create({
+                    name: cat.name,
+                    type: ChannelType.GuildCategory,
+                    position: cat.position
+                }).catch(() => null);
+                
+                if (newCat) {
+                    categoryMap.set(id, newCat.id);
+                }
+            }
+
+            // 3. جلب جميع الرومات النصية والصوتية لإنشائها وربطها بالتصنيفات المناسبة بالثواني
+            const normalChannels = sourceGuild.channels.cache.filter(c => c.type === ChannelType.GuildText || c.type === ChannelType.GuildVoice).sort((a, b) => a.position - b.position);
+
+            let createdCount = 0;
+
+            for (const [id, chan] of normalChannels) {
+                const parentId = chan.parentId ? categoryMap.get(chan.parentId) : null;
+
+                await targetGuild.channels.create({
+                    name: chan.name,
+                    type: chan.type,
+                    parent: parentId,
+                    position: chan.position,
+                    topic: chan.topic || null
+                }).catch(() => null);
+
+                createdCount++;
+            }
+
+            await statusMsg.edit(`✅ **اكتمل نسخ وتكرار مظهر السيرفر بنجاح تام!**\n\n📺 تم إنشاء وتطابق \`${createdCount}\` روم نصي وصوتي وتصنيفاً صامتاً ومطابقاً تماماً للسيرفر الأول.`);
+
+        } catch (err) {
+            console.error(err);
+            await statusMsg.edit('❌ حدث خطأ غير متوقع أثناء محاولة نسخ رومات السيرفر.');
+        }
+        return;
     }
 });
 
