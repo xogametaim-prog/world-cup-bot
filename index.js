@@ -1,8 +1,8 @@
 const { 
     Client, 
     GatewayIntentBits, 
+    ActionRowBuilder, 
     PermissionFlagsBits,
-    Events,
     ChannelType
 } = require('discord.js');
 const express = require('express');
@@ -28,7 +28,8 @@ const ADD_CHANNEL_PREFIX = '+ach';      // إنشاء روم مخصص
 // أيدي حساب الأونر (أنت) الحصري والوحيد المسموح له بتشغيل الأوامر
 const OWNER_ID = '1459567453251309639'; 
 
-client.once(Events.ClientReady, async () => {
+// العودة إلى الحدث المستقر والافتراضي لضمان التشغيل الفوري دون تعليق
+client.once('ready', () => {
     console.log(`Verify & Broadcast Bot is Online as ${client.user.tag}`);
 });
 
