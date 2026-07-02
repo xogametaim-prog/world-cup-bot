@@ -83,6 +83,13 @@ function saveGuildConfig(guildId, guildConfig) {
     fullConfig[guildId] = guildConfig;
     try {
         fs.writeFileSync(configPath, JSON.stringify(fullConfig, null, 2), 'utf8');
+        
+        // طباعة الإعدادات كاملة في الـ Logs لتسهيل حفظها الدائم على جيت هاب
+        console.log("==================================================");
+        console.log("🎉 [CONFIG SAVED] Copy the JSON below and paste it in your config.json file on GitHub to make it permanent!");
+        console.log(JSON.stringify(fullConfig, null, 2));
+        console.log("==================================================");
+        
     } catch (err) {
         console.error("Error writing config: ", err);
     }
@@ -204,7 +211,6 @@ function renderDashboard(content, activeTab, req, currentGuildId = null) {
                 min-height: 100vh;
                 overflow-x: hidden;
             }
-            /* تأثير البطاقات الزجاجية Glassmorphism */
             .glass-card {
                 background: var(--bg-glass);
                 backdrop-filter: blur(12px);
@@ -240,7 +246,6 @@ function renderDashboard(content, activeTab, req, currentGuildId = null) {
                 .sidebar.active { right: 0; }
                 .main-content { margin-right: 0; padding: 1.5rem; }
             }
-            /* الأزرار الدائرية ذات التوهج والتدرج اللوني */
             .btn-glow-primary {
                 background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
                 border: none;
@@ -320,7 +325,6 @@ function renderDashboard(content, activeTab, req, currentGuildId = null) {
                 opacity: 0.3;
                 pointer-events: none;
             }
-            /* معاينة ديسكورد الراقية */
             .discord-preview {
                 background-color: #111214;
                 border-radius: 12px;
@@ -384,7 +388,6 @@ function renderDashboard(content, activeTab, req, currentGuildId = null) {
                 
                 <hr class="mx-3 border-secondary">
                 
-                <!-- سيرفر الدعم الفني الخاص بك -->
                 <a href="https://discord.gg/TvFaRGadkc" class="nav-link text-info fw-bold" target="_blank" style="background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.2);">
                     <i class="bi bi-headset"></i> سيرفر الدعم الفني للبوت
                 </a>
@@ -537,7 +540,6 @@ app.get('/dashboard', checkAuth, (req, res) => {
                 <h2 class="fw-bold mb-1">اختر السيرفر للبدء</h2>
                 <p class="text-muted">اللوحة تدعم جميع سيرفراتك وإعداداتها بشكل منفصل ومجاني بالكامل.</p>
             </div>
-            <!-- زر الانتقال لسيرفر الدعم -->
             <a href="https://discord.gg/TvFaRGadkc" class="btn btn-glow-primary" target="_blank"><i class="bi bi-discord"></i> سيرفر الدعم الفني</a>
         </div>
         <div class="row">
@@ -764,7 +766,6 @@ app.post('/dashboard/:guildId/settings', checkAuth, checkGuildAccess, (req, res)
     const guildId = req.params.guildId;
     const config = getGuildConfig(guildId);
     
-    // حفظ الحد الأقصى للتكتات بناءً على اختيار المستخدم
     if (req.body.maxTicketsPerUser === 'custom') {
         config.maxTicketsPerUser = Number(req.body.customMaxTickets) || 1;
     } else {
@@ -799,7 +800,6 @@ app.get('/dashboard/:guildId/ticket-msg', checkAuth, checkGuildAccess, (req, res
         </div>
     ` : '';
 
-    // بناء الأزرار الخمسة لتعبئتها وتخصيص قنواتها والمنشن الخاص بها
     let buttonsHtml = '';
     for (let i = 0; i < 5; i++) {
         const btn = config.buttons && config.buttons[i] ? config.buttons[i] : {
@@ -1259,7 +1259,6 @@ client.on('interactionCreate', async interaction => {
             const maxLimit = Number(config.maxTicketsPerUser) || 1;
             
             // حساب التكتات النشطة حالياً للمستخدم في هذا السيرفر
-            // ديسكورد يحتاج لتفقد القنوات التي تحمل أسمائهم أو يفحص الأذونات
             const activeTicketsCount = guild.channels.cache.filter(c => {
                 const startsWithTicket = c.name.startsWith('ticket-');
                 const hasUserPermission = c.permissionOverwrites.cache.has(interaction.user.id);
@@ -1409,14 +1408,12 @@ client.on('interactionCreate', async interaction => {
                 return interaction.reply({ content: "عذراً، لا تملك الصلاحية الكافية لاستلام هذا التكت.", ephemeral: true });
             }
 
-            // تعديل الأذونات ليكون المسؤول هو المعين بمتابعة التكت ومخفية عن الباقي
             await channel.permissionOverwrites.edit(member.id, {
                 SendMessages: true,
                 ViewChannel: true,
                 ReadMessageHistory: true
             });
 
-            // إرسال رسالة الاستلام داخل التكت بالصيغة المطلوبة
             await interaction.reply({ 
                 content: `🎫 تم استلام التكت من قبل الإداري: ${interaction.user}` 
             });
