@@ -1,7 +1,7 @@
 {
-  "name": "discord-ticket-dashboard",
+  "name": "ticket-bot-v1",
   "version": "1.0.0",
-  "description": "Multi-Guild Discord Ticket Bot with Web Dashboard",
+  "description": "Professional Multi-Guild Ticket Bot with SaaS Dashboard",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
