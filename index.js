@@ -1,15 +1,5 @@
 /**
  * 🎫 PRO TICKET BOT V1 & SaaS GLASSMORPHISM DASHBOARD
- * الميزات:
- * 1. واجهة مستخدم زجاجية (SaaS Glassmorphism UI) بتأثيرات توهج وانتقالات فائقة النعومة مع شاشة تحميل احترافية.
- * 2. إزالة المعرفات (IDs) يدوياً بشكل نهائي؛ يتم جلب الغرف والرتب والتصنيفات ديناميكياً عبر Discord API.
- * 3. نظام تذاكر ديناميكي غير محدود الفئات (إضافة/حذف/تعديل تذاكر الدعم، الشكاوى، الشراء، وغيرها).
- * 4. نظام حد التذاكر المفتوحة الذكي (Max Tickets Per User) مع قيمة افتراضية قدرها 4 تذاكر.
- * 5. نظام استلام التكت (Claim & Unclaim System) الحصري للإداريين مع قفل التفاعل وربط اللوق.
- * 6. نظام نقاط الخبرة (XP System) يمنح نقاط خبرة عند إرسال الرسائل مع صفحة لترتيب الأعضاء (Ranking Leaderboard).
- * 7. نظام عملات خاص بالبوت (Coins / Stars / Tokens) مع إمكانية تعديل قيم التحويل وتغيير مسماها ديناميكياً.
- * 8. نظام حماية واشتراكات Premium تلقائي مدمج بالكامل؛ يتم تفعيله عند التحويل إلى حساب صاحب البوت داخل سيرفر الدعم الفني المحدد.
- * 9. تخزين سحابي مجاني ومدمج بالكامل لضمان عدم ضياع البيانات حتى عند نوم أو إعادة تشغيل خادم Render المجاني.
  */
 
 const { 
@@ -109,88 +99,22 @@ function restoreDatabaseCloud() {
                         if (Object.keys(parsed).length > 0) {
                             database = parsed;
                             saveDatabase();
-                            console.log("☁️ [Database Cloud Sync] Restored active configuration successfully!");
+                            console.log("☁️ [Cloud Sync] Restored database successfully for all guilds from cloud storage!");
                         }
                     }
                 } catch (e) {
-                    console.log("Starting with fresh/local configuration file.");
+                    console.log("No cloud backup found yet, starting with local file.");
                 }
             });
         }).on('error', (e) => {
-            console.error("Cloud Database Restore Failed: ", e.message);
+            console.error("Cloud Restore Failed: ", e.message);
         });
     } catch (err) {
-        console.error("Cloud Database Restore Trigger Failed: ", err);
+        console.error("Cloud Restore Trigger Failed: ", err);
     }
 }
 
-// جلب إعدادات سيرفر محدد أو تطبيق القوالب الافتراضية
-function getGuildConfig(guildId) {
-    if (!database.guilds[guildId]) {
-        database.guilds[guildId] = {
-            logsChannelId: "",
-            embedChannelId: "",
-            defaultCategoryId: "",
-            maxTicketsPerUser: 4, // القيمة الافتراضية كما في Ticket Bot V2
-            currencyName: "Coins", // اسم العملة الافتراضية
-            creditsToCoinRatio: 1000, // النسبة الافتراضية 1000 Credits = 1 Coin
-            xpPerMessage: 15, // كمية الـ XP الافتراضية لكل رسالة
-            embed: {
-                title: "🎫 مركز المساعدة والدعم الفني",
-                description: "أهلاً بك في مركز الدعم. يرجى النقر على القسم المطلوب بالأسفل للتحدث مع فريق العمل الإداري.",
-                color: "#3b82f6",
-                author: "ticket bot.v1",
-                footer: "نحن هنا لخدمتك دائماً",
-                thumbnail: "",
-                image: "",
-                timestamp: true
-            },
-            buttons: [
-                {
-                    id: "support_general",
-                    label: "الدعم الفني",
-                    emoji: "🎫",
-                    style: "PRIMARY",
-                    ticketName: "ticket-{username}",
-                    mentionRole: "",
-                    categoryId: "",
-                    welcomeMessage: "أهلاً بك {user} في قسم الدعم الفني العام. يرجى كتابة تفاصيل مشكلتك هنا وسيرد عليك الإداري المختص."
-                },
-                {
-                    id: "support_report",
-                    label: "الشكاوى والبلاغات",
-                    emoji: "⚠️",
-                    style: "DANGER",
-                    ticketName: "report-{username}",
-                    mentionRole: "",
-                    categoryId: "",
-                    welcomeMessage: "أهلاً بك {user} في قسم الشكاوى والبلاغات. يرجى توفير الدلائل الكافية ليتم النظر بطلبك سريعاً."
-                }
-            ],
-            activeEmbedMessageId: ""
-        };
-        saveDatabase();
-    }
-    return database.guilds[guildId];
-}
-
-// جلب بيانات مستخدم محدد أو تهيئة حسابه ديناميكياً
-function getUserData(userId) {
-    if (!database.users[userId]) {
-        database.users[userId] = {
-            xp: 0,
-            level: 1,
-            coins: 0,
-            premiumTier: 0, // 0 = مجاني, 1 = بريميوم أول, 2 = بريميوم ثاني
-            premiumExpiry: null,
-            username: "عضو"
-        };
-        saveDatabase();
-    }
-    return database.users[userId];
-}
-
-// تهيئة البوت
+// تهيئة ديسكورد بوت
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -201,12 +125,12 @@ const client = new Client({
     partials: [Partials.Channel, Partials.Message]
 });
 
-// تهيئة Express لـ Render
+// تهيئة خادم الويب
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(session({
-    secret: process.env.SESSION_SECRET || 'probot-ticket-saas-key',
+    secret: process.env.SESSION_SECRET || 'premium-glassmorphism-key-v1',
     resave: false,
     saveUninitialized: false
 }));
@@ -229,10 +153,76 @@ passport.use(new DiscordStrategy({
     process.nextTick(() => done(null, profile));
 }));
 
+// جلب الإعدادات الخاصة بالسيرفر
+function getGuildConfig(guildId) {
+    if (!localConfigCache) {
+        localConfigCache = database.guilds || {};
+    }
+    if (!localConfigCache[guildId]) {
+        localConfigCache[guildId] = {
+            logsChannelId: "",
+            embedChannelId: "",
+            defaultCategoryId: "",
+            dashboardColor: "#3b82f6",
+            botDisplayName: "ticket bot.v1",
+            maxTicketsPerUser: 4, 
+            embed: {
+                title: "🎫 مركز الدعم الفني والمساعدة",
+                description: "يسعدنا دائماً تقديم يد العون لكم. يرجى اختيار القسم المناسب من الأزرار بالأسفل لتلقي المساعدة الفورية من فريق عملنا المتواجد على مدار الساعة.",
+                color: "#3b82f6",
+                author: "ticket bot.v1",
+                footer: "جميع الحقوق محفوظة للبوت ©",
+                thumbnail: "",
+                image: "",
+                timestamp: true
+            },
+            buttons: [
+                {
+                    label: "الدعم الفني والشكاوى",
+                    emoji: "🎫",
+                    style: "PRIMARY",
+                    ticketName: "ticket-{username}",
+                    mentionRole: "",
+                    categoryId: "",
+                    welcomeMessage: "أهلاً بك {user} في قسم الدعم والشكاوى! يرجى طرح مشكلتك أو استفسارك بالتفصيل وسيقوم أحد الإداريين بالرد عليك في أقرب وقت."
+                }
+            ],
+            activeEmbedMessageId: ""
+        };
+        database.guilds = localConfigCache;
+        saveDatabase();
+    }
+    return localConfigCache[guildId];
+}
+
+let localConfigCache = database.guilds || {};
+
+function saveGuildConfig(guildId, guildConfig) {
+    localConfigCache[guildId] = guildConfig;
+    database.guilds = localConfigCache;
+    saveDatabase();
+    syncDatabaseCloud();
+}
+
+function getUserData(userId) {
+    if (!database.users[userId]) {
+        database.users[userId] = {
+            xp: 0,
+            level: 1,
+            coins: 0,
+            premiumTier: 0,
+            premiumExpiry: null,
+            username: "عضو"
+        };
+        saveDatabase();
+    }
+    return database.users[userId];
+}
+
 // جدران الحماية للتحقق من الصلاحيات والوصول
 function checkAuth(req, res, next) {
     if (req.isAuthenticated()) return next();
-    res.redirect('/login');
+    res.redirect('/');
 }
 
 function checkGuildAccess(req, res, next) {
@@ -305,7 +295,6 @@ function renderDashboard(content, activeTab, req, currentGuildId = null) {
                 min-height: 100vh;
                 overflow-x: hidden;
             }
-            /* شاشة التحميل الاحترافية مثل ProBot */
             #loader {
                 position: fixed;
                 top: 0;
@@ -332,11 +321,10 @@ function renderDashboard(content, activeTab, req, currentGuildId = null) {
             @keyframes spin {
                 to { transform: rotate(360deg); }
             }
-            /* Glassmorphism SaaS Cards */
             .glass-card {
                 background: var(--bg-glass);
-                backdrop-filter: blur(16px);
-                -webkit-backdrop-filter: blur(16px);
+                backdrop-filter: blur(12px);
+                -webkit-backdrop-filter: blur(12px);
                 border: 1px solid rgba(255, 255, 255, 0.08);
                 border-radius: 1.25rem;
                 box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
@@ -449,7 +437,6 @@ function renderDashboard(content, activeTab, req, currentGuildId = null) {
         </style>
     </head>
     <body>
-        <!-- شاشة التحميل الاحترافية -->
         <div id="loader">
             <div class="spinner"></div>
             <p style="margin-top: 20px; font-weight: 700; letter-spacing: 1px; color: var(--accent-blue);">جاري تحميل اللوحة الاحترافية...</p>
@@ -507,7 +494,6 @@ function renderDashboard(content, activeTab, req, currentGuildId = null) {
         </div>
 
         <script>
-            // إخفاء شاشة التحميل بمجرد انتهاء التحميل
             window.addEventListener('load', () => {
                 const loader = document.getElementById('loader');
                 loader.style.opacity = '0';
@@ -523,7 +509,90 @@ function renderDashboard(content, activeTab, req, currentGuildId = null) {
 
 // ==================== مسارات الويب EXPRESS ====================
 
-// صفحة اختيار السيرفر
+app.get('/', (req, res) => {
+    if (req.isAuthenticated()) return res.redirect('/dashboard');
+    res.send(`
+    <!DOCTYPE html>
+    <html lang="ar" dir="rtl">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>ticket bot.v1 - تسجيل الدخول</title>
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css">
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+            body {
+                background: radial-gradient(circle at 50% 50%, #0d1224 0%, #05070f 100%);
+                color: #fff;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                height: 100vh;
+                font-family: 'Cairo', sans-serif;
+            }
+            .hero-card {
+                background: rgba(15, 23, 42, 0.65);
+                backdrop-filter: blur(16px);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 1.5rem;
+                padding: 3.5rem;
+                text-align: center;
+                max-width: 520px;
+                width: 100%;
+                box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+            }
+            .btn-discord {
+                background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+                color: white;
+                font-weight: 700;
+                padding: 12px 30px;
+                border-radius: 50px;
+                display: inline-flex;
+                align-items: center;
+                gap: 12px;
+                text-decoration: none;
+                box-shadow: 0 4px 20px rgba(59, 130, 246, 0.4);
+                transition: all 0.3s ease;
+            }
+            .btn-discord:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 6px 25px rgba(139, 92, 246, 0.6);
+                color: white;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="hero-card">
+            <div style="background: linear-gradient(135deg, #3b82f6, #8b5cf6); width: 80px; height: 80px; border-radius: 20px; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px auto; box-shadow: 0 8px 25px rgba(59,130,246,0.3);">
+                <i class="bi bi-ticket-perforated" style="font-size: 2.5rem; color: white;"></i>
+            </div>
+            <h1 class="fw-bold mb-3">ticket bot.v1</h1>
+            <p class="text-muted mb-4">نظام الدعم الفني المجاني الأكثر تقدماً بالكامل. تذاكر بلا حدود، إعدادات متكاملة، وقوالب زجاجية عصرية.</p>
+            <a href="/login" class="btn btn-discord">
+                <i class="bi bi-discord"></i> دخول لوحة التحكم الذكية
+            </a>
+        </div>
+    </body>
+    </html>
+    `);
+});
+
+// تعريف مسار تسجيل الدخول OAuth2 بشكل سليم
+app.get('/login', passport.authenticate('discord'));
+
+app.get('/callback', passport.authenticate('discord', { failureRedirect: '/' }), (req, res) => {
+    res.redirect('/dashboard');
+});
+
+app.get('/logout', (req, res, next) => {
+    req.logout((err) => {
+        if (err) return next(err);
+        res.redirect('/');
+    });
+});
+
+// اختيار السيرفر المشترك
 app.get('/dashboard', checkAuth, (req, res) => {
     const userGuilds = req.user.guilds;
     const adminGuilds = userGuilds.filter(g => {
@@ -574,7 +643,7 @@ app.get('/dashboard', checkAuth, (req, res) => {
     res.send(renderDashboard(content, 'select', req));
 });
 
-// الصفحة الرئيسية لإحصائيات السيرفر
+// الصفحة الرئيسية لإحصائيات السيرفر المختار
 app.get('/dashboard/:guildId', checkAuth, checkGuildAccess, (req, res) => {
     const guildId = req.params.guildId;
     const guild = client.guilds.cache.get(guildId);
@@ -589,7 +658,7 @@ app.get('/dashboard/:guildId', checkAuth, checkGuildAccess, (req, res) => {
     <div class="container-fluid">
         <div class="mb-4">
             <h2 class="fw-bold mb-1">إحصائيات سيرفر: ${guild.name}</h2>
-            <p class="text-muted">الحد الأقصى للتكتات للمستخدم الواحد حالياً: **${config.maxTicketsPerUser}**</p>
+            <p class="text-muted">جميع الميزات مفعلة بالكامل ومتاحة بدون اشتراكات أو قيود.</p>
         </div>
         
         <div class="row">
@@ -598,7 +667,7 @@ app.get('/dashboard/:guildId', checkAuth, checkGuildAccess, (req, res) => {
                     <div class="card-body">
                         <div class="row align-items-center">
                             <div class="col">
-                                <div class="text-xs text-primary text-uppercase mb-1 fw-bold">حالة البوت</div>
+                                <div class="text-xs text-primary text-uppercase mb-1 fw-bold">حالة البوت الأساسي</div>
                                 <div class="h5 mb-0 fw-bold">متصل بالخدمة 🟢</div>
                             </div>
                             <div class="col-auto"><i class="bi bi-robot text-primary" style="font-size: 2rem;"></i></div>
@@ -612,7 +681,7 @@ app.get('/dashboard/:guildId', checkAuth, checkGuildAccess, (req, res) => {
                     <div class="card-body">
                         <div class="row align-items-center">
                             <div class="col">
-                                <div class="text-xs text-info text-uppercase mb-1 fw-bold">التكتات المفتوحة</div>
+                                <div class="text-xs text-info text-uppercase mb-1 fw-bold">عدد التكتات المفتوحة</div>
                                 <div class="h5 mb-0 fw-bold">${openTickets} تكت</div>
                             </div>
                             <div class="col-auto"><i class="bi bi-chat-left-dots text-info" style="font-size: 2rem;"></i></div>
@@ -626,7 +695,7 @@ app.get('/dashboard/:guildId', checkAuth, checkGuildAccess, (req, res) => {
                     <div class="card-body">
                         <div class="row align-items-center">
                             <div class="col">
-                                <div class="text-xs text-success text-uppercase mb-1 fw-bold">الأعضاء بالسيرفر</div>
+                                <div class="text-xs text-success text-uppercase mb-1 fw-bold">إجمالي المستخدمين</div>
                                 <div class="h5 mb-0 fw-bold">${guild.memberCount} عضو</div>
                             </div>
                             <div class="col-auto"><i class="bi bi-people text-success" style="font-size: 2rem;"></i></div>
@@ -649,6 +718,47 @@ app.get('/dashboard/:guildId', checkAuth, checkGuildAccess, (req, res) => {
                 </div>
             </div>
         </div>
+
+        <div class="row mt-4">
+            <div class="col-lg-6">
+                <div class="card glass-card text-white">
+                    <div class="card-header border-0 bg-transparent fw-bold h5">أداء واستقرار النظام</div>
+                    <div class="card-body">
+                        <table class="table table-dark table-hover table-borderless m-0 bg-transparent text-white">
+                            <tbody>
+                                <tr>
+                                    <td>وقت التشغيل المتواصل (Uptime)</td>
+                                    <td class="text-end text-info">${Math.floor(client.uptime / 60000)} دقيقة</td>
+                                </tr>
+                                <tr>
+                                    <td>استهلاك ذاكرة الخادم الأساسية</td>
+                                    <td class="text-end text-info">${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2)} MB</td>
+                                </tr>
+                                <tr>
+                                    <td>مستند الدعم الرسمي للبوت</td>
+                                    <td class="text-end"><a href="https://discord.gg/TvFaRGadkc" target="_blank" class="text-info text-decoration-none">انقر للانضمام</a></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="card glass-card text-white">
+                    <div class="card-header border-0 bg-transparent fw-bold h5">الدليل السريع وميزات ديسكورد</div>
+                    <div class="card-body">
+                        <p>نظام التذاكر بالكامل مجاني وذكي للغاية:</p>
+                        <ul>
+                            <li>يمنع الأعضاء تلقائياً من تجاوز الحد الأقصى للتذاكر المسموح بفتحها.</li>
+                            <li>يدعم أرشيف الرسائل بصيغة HTML منسقة ومحمية ومباشرة.</li>
+                        </ul>
+                        <div class="d-grid mt-4">
+                            <a href="/dashboard/${guildId}/ticket-msg" class="btn btn-glow-primary">تصميم رسالة التكت الأولى الآن 🎨</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
     `;
     res.send(renderDashboard(content, 'home', req, guildId));
@@ -660,7 +770,6 @@ app.get('/dashboard/:guildId/settings', checkAuth, checkGuildAccess, (req, res) 
     const config = getGuildConfig(guildId);
     const guild = client.guilds.cache.get(guildId);
 
-    // جلب الرومات والتصنيفات والرتب ديناميكياً لبنائها كـ Dropdowns
     const channels = guild.channels.cache.filter(c => c.type === ChannelType.GuildText);
     const categories = guild.channels.cache.filter(c => c.type === ChannelType.GuildCategory);
     
@@ -691,7 +800,6 @@ app.get('/dashboard/:guildId/settings', checkAuth, checkGuildAccess, (req, res) 
         <form action="/dashboard/${guildId}/settings" method="POST">
             <div class="row">
                 <div class="col-lg-8">
-                    <!-- نظام الحد الأقصى للتكتات -->
                     <div class="card glass-card text-white mb-4">
                         <div class="card-header bg-transparent border-0 fw-bold h5">الحد الأقصى للتذاكر للمستخدم الواحد (Max Tickets Per User)</div>
                         <div class="card-body">
@@ -713,7 +821,6 @@ app.get('/dashboard/:guildId/settings', checkAuth, checkGuildAccess, (req, res) 
                         </div>
                     </div>
 
-                    <!-- نظام نقاط الخبرة XP ونظام العملات -->
                     <div class="card glass-card text-white mb-4">
                         <div class="card-header bg-transparent border-0 fw-bold h5">إعدادات الاقتصاد ونظام الـ XP</div>
                         <div class="card-body">
@@ -804,7 +911,7 @@ app.post('/dashboard/:guildId/settings', checkAuth, checkGuildAccess, (req, res)
     res.redirect(`/dashboard/${guildId}/settings?success=true`);
 });
 
-// صفحة تعديل وتصميم رسالة التكت والتحكم بالأزرار غير المحدودة (إضافة وتعديل وحذف الفئات)
+// صفحة تعديل وتصميم رسالة التكت والتحكم بالأزرار غير المحدودة
 app.get('/dashboard/:guildId/ticket-msg', checkAuth, checkGuildAccess, (req, res) => {
     const guildId = req.params.guildId;
     const config = getGuildConfig(guildId);
@@ -971,7 +1078,6 @@ app.get('/dashboard/:guildId/ticket-msg', checkAuth, checkGuildAccess, (req, res
 
     <script>
         function addNewBtnCard() {
-            // كود مبسط لإضافة فئة جديدة للزر تلقائياً وحفظها من الواجهة الرسومية بالداشبورد
             const accordion = document.getElementById('buttonsAccordion');
             const newIndex = accordion.children.length;
             
@@ -1022,7 +1128,6 @@ app.get('/dashboard/:guildId/ticket-msg', checkAuth, checkGuildAccess, (req, res
     res.send(renderDashboard(content, 'ticket', req, guildId));
 });
 
-// استقبال وحفظ بيانات التذاكر والتحكم بالأزرار
 app.post('/dashboard/:guildId/ticket-msg', checkAuth, checkGuildAccess, async (req, res) => {
     const guildId = req.params.guildId;
     const config = getGuildConfig(guildId);
@@ -1038,7 +1143,6 @@ app.post('/dashboard/:guildId/ticket-msg', checkAuth, checkGuildAccess, async (r
         image: req.body.image
     };
 
-    // فلترة وبناء قائمة الأزرار غير المحدودة من المدخلات الرسومية بالداشبورد
     config.buttons = [];
     if (req.body.buttons && typeof req.body.buttons === 'object') {
         const btnsArray = Object.values(req.body.buttons);
@@ -1080,7 +1184,6 @@ app.post('/dashboard/:guildId/ticket-msg', checkAuth, checkGuildAccess, async (r
 
 // صفحة ترتيب نقاط الخبرة XP Leaderboard
 app.get('/dashboard/ranking', checkAuth, (req, res) => {
-    // تصفية وترتيب حسابات الأعضاء حسب نقاط الـ XP التراكمية بشكل تنازلي
     const sortedUsers = Object.entries(database.users)
         .map(([id, u]) => ({ id, ...u }))
         .sort((a, b) => b.xp - a.xp)
@@ -1130,7 +1233,7 @@ app.get('/dashboard/ranking', checkAuth, (req, res) => {
 
 // صفحة الـ Premium والباقات وتعديل بيانات البوت
 app.get('/dashboard/premium', checkAuth, (req, res) => {
-    const isOwner = req.user.id === "1459567453251309639" || req.user.id === "1457923390143856642"; // حساب المطور/المالك لتعديل الأسعار والباقات
+    const isOwner = req.user.id === "1459567453251309639" || req.user.id === "1457923390143856642";
     const pSettings = database.premiumSettings;
 
     const content = `
@@ -1139,7 +1242,6 @@ app.get('/dashboard/premium', checkAuth, (req, res) => {
         <p class="text-muted mb-4">احصل على أعلى ميزات الحماية والتخصيص الفاخرة بشكل تلقائي.</p>
 
         <div class="row">
-            <!-- باقة Premium الأولى -->
             <div class="col-md-6 mb-4">
                 <div class="card glass-card text-white h-100 border-start border-primary border-4 p-3">
                     <div class="card-body d-flex flex-column justify-content-between">
@@ -1158,7 +1260,6 @@ app.get('/dashboard/premium', checkAuth, (req, res) => {
                 </div>
             </div>
 
-            <!-- باقة Premium الثانية -->
             <div class="col-md-6 mb-4">
                 <div class="card glass-card text-white h-100 border-start border-warning border-4 p-3">
                     <div class="card-body d-flex flex-column justify-content-between">
@@ -1180,7 +1281,6 @@ app.get('/dashboard/premium', checkAuth, (req, res) => {
         </div>
 
         ${isOwner ? `
-        <!-- لوحة تحكم الإدارة لمالك البوت فقط لتغيير الأسعار والباقات ديناميكياً -->
         <div class="row mt-4">
             <div class="col-12">
                 <div class="card glass-card text-white">
@@ -1217,7 +1317,6 @@ app.get('/dashboard/premium', checkAuth, (req, res) => {
     res.send(renderDashboard(content, 'premium', req));
 });
 
-// معالجة حفظ إعدادات باقات بريميوم لمالك البوت
 app.post('/dashboard/premium/admin-save', checkAuth, (req, res) => {
     const isOwner = req.user.id === "1459567453251309639" || req.user.id === "1457923390143856642";
     if (!isOwner) return res.status(403).send("غير مصرح لك بالدخول.");
@@ -1357,22 +1456,17 @@ function saveGuildConfig(guildId, config) {
 
 client.on('messageCreate', async message => {
     if (message.author.bot) {
-        // التحقق ومراقبة عمليات التحويل الصادرة من بوت ProBot داخل سيرفر الدعم الفني فقط
         if (message.guildId === "1517507260023308400") {
             const content = message.content;
             
-            // قراءة رسائل التحويل لـ Probot لدفع العملات والتفعيل التلقائي الفوري للاشتراك
-            // مثال: ta_im1, قام بتحويل "$1" لـ <@!1457923390143856642> | :moneybag:
             if (content.includes("قام بتحويل") && (content.includes("1459567453251309639") || content.includes("1457923390143856642"))) {
-                // استخراج السعر والمستلم والدافع
                 const regExp = /قام بتحويل\s*"\s*\$?([\d,]+)\s*"\s*لـ\s*<@!?(\d+)>/;
                 const matches = content.match(regExp);
                 
                 if (matches) {
                     const price = parseInt(matches[1].replace(/,/g, ''));
-                    const targetId = matches[2]; // حساب صاحب البوت المستلم الصحيح
+                    const targetId = matches[2];
                     
-                    // البحث عن العضو المحول من خلال المنشن الأول بالرسالة
                     const payerMember = message.mentions.members.first();
                     if (payerMember && (targetId === "1459567453251309639" || targetId === "1457923390143856642")) {
                         const userId = payerMember.id;
@@ -1380,22 +1474,21 @@ client.on('messageCreate', async message => {
                         
                         let tierGranted = 0;
                         if (price >= database.premiumSettings.priceTier2) {
-                            tierGranted = 2; // Premium الثاني
+                            tierGranted = 2;
                         } else if (price >= database.premiumSettings.priceTier1) {
-                            tierGranted = 1; // Premium الأول
+                            tierGranted = 1;
                         }
 
                         if (tierGranted > 0) {
                             userData.premiumTier = tierGranted;
                             const expiry = new Date();
-                            expiry.setMonth(expiry.getMonth() + 1); // التفعيل لمدة شهر واحد تلقائياً
+                            expiry.setMonth(expiry.getMonth() + 1);
                             userData.premiumExpiry = expiry.getTime();
                             userData.username = payerMember.user.username;
                             
                             saveDatabase();
                             syncDatabaseCloud();
 
-                            // إرسال رسالة شكر وتفعيل الترقية تلقائياً
                             message.channel.send(`🎉 **تهانينا يا ${payerMember}!** تم التحقق من التحويل المالي للمبلغ \`${price.toLocaleString()}\` Credits بنجاح.\n⭐ **تم تفعيل باقة Premium لـ ${tierGranted === 2 ? 'المستوى الثاني' : 'المستوى الأول'} تلقائياً** وربط الاشتراك بحسابك بنجاح!`);
                         }
                     }
@@ -1405,7 +1498,6 @@ client.on('messageCreate', async message => {
         return;
     }
 
-    // --- نظام نقاط الخبرة XP التراكمي في السيرفر ---
     const guildId = message.guildId;
     if (guildId) {
         const config = getGuildConfig(guildId);
@@ -1415,11 +1507,9 @@ client.on('messageCreate', async message => {
         const xpGained = config.xpPerMessage || 15;
         userData.xp += xpGained;
         
-        // ترقية مستوى العضو ديناميكياً عند تجاوزه حدود نقاط الـ XP
         const nextLevelThreshold = userData.level * userData.level * 350;
         if (userData.xp >= nextLevelThreshold) {
             userData.level += 1;
-            // إضافة عملات تشجيعية مجاناً عند صعود المستوى
             userData.coins += 5;
             message.channel.send(`🎉 **مبارك صعود مستواك يا ${message.author}!** لقد وصلت الآن للمستوى **${userData.level}** وحصلت على عملات تشجيعية مجاناً!`).catch(() => {});
         }
@@ -1436,7 +1526,6 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isButton()) {
         const customId = interaction.customId;
 
-        // تفاعل فتح تكت جديد
         if (customId.startsWith('open_ticket_')) {
             await interaction.deferReply({ ephemeral: true });
             const index = parseInt(customId.replace('open_ticket_', ''));
@@ -1448,7 +1537,6 @@ client.on('interactionCreate', async interaction => {
 
             const maxLimit = Number(config.maxTicketsPerUser) || 4;
             
-            // التحقق من حد التذاكر المفتوحة بالتزامن للمستخدم الفردي
             const activeCount = interaction.guild.channels.cache.filter(c => {
                 return c.name.startsWith('ticket-') && c.permissionOverwrites.cache.has(interaction.user.id);
             }).size;
@@ -1457,11 +1545,9 @@ client.on('interactionCreate', async interaction => {
                 return interaction.editReply({ content: `⚠️ عذراً، لقد تجاوزت الحد الأقصى للتذاكر المفتوحة المسموح به في هذا السيرفر وهو: **${maxLimit} تكت**.` });
             }
 
-            // إنشاء تكت ترحيبي بمودال أو زر
             const cleanName = interaction.user.username.toLowerCase().replace(/[^a-z0-9]/g, '');
             const expectedName = (btnConfig.ticketName || 'ticket-{username}').replace('{username}', cleanName);
 
-            // التحقق من التكرار
             const duplicate = interaction.guild.channels.cache.find(c => c.name === expectedName);
             if (duplicate) {
                 return interaction.editReply({ content: `لديك تكت مفتوح وموجود بالفعل داخل هذا السيرفر: <#${duplicate.id}>` });
@@ -1539,7 +1625,6 @@ client.on('interactionCreate', async interaction => {
             }
         }
 
-        // إغلاق التكت
         if (customId === 'ticket_close') {
             const confirmRow = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId('ticket_close_confirm').setLabel('تأكيد الإغلاق الفوري 🔒').setStyle(ButtonStyle.Danger),
@@ -1580,7 +1665,6 @@ client.on('interactionCreate', async interaction => {
             }, 5000);
         }
 
-        // نظام الـ Claim (استلام وإقفال التكت)
         if (customId === 'ticket_claim') {
             const channel = interaction.channel;
             const member = interaction.member;
@@ -1589,14 +1673,12 @@ client.on('interactionCreate', async interaction => {
                 return interaction.reply({ content: "عذراً، لا تملك الصلاحية الإدارية الكافية لاستلام هذا التكت.", ephemeral: true });
             }
 
-            // منع الـ Claim المزدوج
             const claimed = channel.topic && channel.topic.startsWith("Claimed_by_");
             if (claimed) {
                 const adminId = channel.topic.replace("Claimed_by_", "");
                 return interaction.reply({ content: `⚠️ تم استلام هذا التكت بالفعل بواسطة الإداري المسؤول: <@${adminId}>`, ephemeral: true });
             }
 
-            // تحديث الصلاحيات وقفل التكت للمستلم
             await channel.setTopic(`Claimed_by_${interaction.user.id}`);
             await channel.permissionOverwrites.edit(interaction.user.id, {
                 SendMessages: true,
@@ -1608,7 +1690,6 @@ client.on('interactionCreate', async interaction => {
             logEvent('claim', guildId, { user: interaction.user, channel: channel });
         }
 
-        // تغيير اسم الروم
         if (customId === 'ticket_rename') {
             const modal = new ModalBuilder().setCustomId('modal_rename').setTitle('إعادة تسمية التكت');
             const nameInp = new TextInputBuilder()
@@ -1622,7 +1703,6 @@ client.on('interactionCreate', async interaction => {
             await interaction.showModal(modal);
         }
 
-        // إضافة عضو للتكت
         if (customId === 'ticket_add_member') {
             const modal = new ModalBuilder().setCustomId('modal_add_member').setTitle('إضافة عضو للتكت');
             const userInp = new TextInputBuilder()
@@ -1636,7 +1716,6 @@ client.on('interactionCreate', async interaction => {
             await interaction.showModal(modal);
         }
 
-        // إزالة عضو من التكت
         if (customId === 'ticket_remove_member') {
             const modal = new ModalBuilder().setCustomId('modal_remove_member').setTitle('إزالة عضو من التكت');
             const userInp = new TextInputBuilder()
@@ -1650,7 +1729,6 @@ client.on('interactionCreate', async interaction => {
             await interaction.showModal(modal);
         }
 
-        // أرشيف فوري محلياً داخل التكت
         if (customId === 'ticket_transcript') {
             await interaction.reply({ content: 'جاري إنشاء الأرشيف الفوري والنسخ الاحتياطي...' });
             const html = await generateTranscript(interaction.channel);
